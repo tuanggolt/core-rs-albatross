@@ -1,0 +1,59 @@
+# Deploy with `flyctl deploy --local-only`
+
+app = "core-rs-albatross"
+
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[build]
+  image = "core:latest"
+
+[env]
+  LISTEN_ADDRESSES = "/ip4/127.0.0.1/tcp/5000/ws"
+  NIMIQ_NETWORK= "dev-albatross"
+  NIMIQ_LOG_LEVEL= "debug"
+  NIMIQ_VALIDATOR= "validator"
+  RPC_ENABLED= "true"
+  VALIDATOR_KEY = "f8ac8d3d52f72f86a97e83f6ccab9c8f60c70e92e13ea490ea3433b7611ab0058f0584d3e4a2b9856e482440967af01a6c878cb5ff0ea98acb07eec5fd0f5deb1db5fb2843d7bf34d7b9fddba5234943e6c3e491cbe08d071668affdf5d10000"
+  RUST_BACKTRACE = "1"
+  NIMIQ_LOG_TIMESTAMPS = "true"
+  NIMIQ_MIN_PEERS = "1"
+  NIMIQ_PEER_KEY_FILE = "/home/nimiq/.nimiq/peer_key.dat"
+
+[[services]]
+  internal_port = 5000
+  protocol = "tcp"
+
+  [services.concurrency]
+    hard_limit = 10000
+    soft_limit = 10000
+
+  [[services.ports]]
+    # handlers = [] // pass through
+    port = 5000
+
+  [[services.tcp_checks]]
+    grace_period = "5s"
+    interval = "30s"
+    port = 5000
+    restart_limit = 6
+    timeout = "2s"
+
+[[services]]
+  internal_port = 8648
+  protocol = "tcp"
+
+  [services.concurrency]
+    hard_limit = 10000
+    soft_limit = 10000
+
+  [[services.ports]]
+    handlers = ['tls']
+    port = 443
+
+  [[services.tcp_checks]]
+    grace_period = "5s"
+    interval = "30s"
+    port = 443
+    restart_limit = 6
+    timeout = "2s"
