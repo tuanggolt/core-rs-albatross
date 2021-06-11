@@ -39,4 +39,5 @@ nimiq-database = { path = "../database", features = ["account"] }
 nimiq-hash = { path = "../hash" }
 nimiq-keys = { path = "../keys" }
 nimiq-primitives = { path = "../primitives" }
+nimiq-transaction = { path = "../primitives/transaction" }
 nimiq-vrf = { path = "../vrf" }

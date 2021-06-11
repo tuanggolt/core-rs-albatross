@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use chrono::{DateTime, Utc};
+use hex::FromHex;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -9,6 +10,7 @@ use bls::{PublicKey as BlsPublicKey, SecretKey as BlsSecretKey};
 use keys::Address;
 use primitives::account::ValidatorId;
 use primitives::coin::Coin;
+use transaction::account::htlc_contract::{AnyHash, HashAlgorithm};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct GenesisConfig {
@@ -21,17 +23,35 @@ pub struct GenesisConfig {
     pub timestamp: Option<DateTime<Utc>>,
 
     #[serde(default)]
+    pub nim_1_head_block: Option<NimiqLegacyHeadBlock>,
+
+    #[serde(default)]
     pub validators: Vec<GenesisValidator>,
 
     #[serde(default)]
     pub stakes: Vec<GenesisStake>,
 
     #[serde(default)]
-    pub accounts: Vec<GenesisAccount>,
+    pub basic_accounts: Vec<GenesisBasicAccount>,
+
+    #[serde(default)]
+    pub vesting_accounts: Vec<GenesisVestingAccount>,
+
+    #[serde(default)]
+    pub htlc_accounts: Vec<GenesisHTLCAccount>,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_nimiq_address_opt")]
     pub staking_contract: Option<Address>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct NimiqLegacyHeadBlock {
+    pub height: u64,
+
+    pub timestamp: u64,
+
+    pub custom_genesis_delay: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -62,12 +82,66 @@ pub struct GenesisStake {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct GenesisAccount {
+pub struct GenesisBasicAccount {
     #[serde(deserialize_with = "deserialize_nimiq_address")]
     pub address: Address,
 
     #[serde(deserialize_with = "deserialize_coin")]
     pub balance: Coin,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GenesisVestingAccount {
+    #[serde(deserialize_with = "deserialize_nimiq_address")]
+    pub address: Address,
+
+    #[serde(deserialize_with = "deserialize_coin")]
+    pub balance: Coin,
+
+    #[serde(deserialize_with = "deserialize_nimiq_address")]
+    pub owner: Address,
+
+    pub vesting_start : u64,
+
+    pub vesting_start_ts : Option<u64>,
+
+    pub vesting_step_blocks: u64,
+
+    #[serde(deserialize_with = "deserialize_coin")]
+    pub vesting_step_amount: Coin,
+
+    #[serde(deserialize_with = "deserialize_coin")]
+    pub vesting_total_amount: Coin,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GenesisHTLCAccount {
+    #[serde(deserialize_with = "deserialize_nimiq_address")]
+    pub address: Address,
+
+    #[serde(deserialize_with = "deserialize_coin")]
+    pub balance: Coin,
+
+    #[serde(deserialize_with = "deserialize_nimiq_address")]
+    pub sender: Address,
+
+    #[serde(deserialize_with = "deserialize_nimiq_hash_algorithm")]
+    pub hash_algorithm: HashAlgorithm,
+
+    #[serde(deserialize_with = "deserialize_nimiq_hash")]
+    pub hash_root: AnyHash,
+
+    #[serde(deserialize_with = "deserialize_nimiq_address")]
+    pub recipient: Address,
+
+    pub hash_count: u8,
+
+    pub timeout: u64,
+
+    pub timeout_ts: Option<u64>,
+
+    #[serde(deserialize_with = "deserialize_coin")]
+    pub total_amount: Coin,
 }
 
 pub fn deserialize_nimiq_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
@@ -133,5 +207,26 @@ where
         ))
     } else {
         Ok(None)
+    }
+}
+
+pub(crate) fn deserialize_nimiq_hash<'de, D>(deserializer: D) -> Result<AnyHash, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let hash_hex: String = Deserialize::deserialize(deserializer)?;
+    let foo = Vec::from_hex(hash_hex).map_err(|_e|serde::de::Error::custom("Unable to parse hash"))?;
+    Ok(AnyHash::from(&foo[..]))
+}
+
+pub(crate) fn deserialize_nimiq_hash_algorithm<'de, D>(deserializer: D) -> Result<HashAlgorithm, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let hash_algorithm: String = Deserialize::deserialize(deserializer)?;
+    match hash_algorithm.as_str() {
+        "blake2b" => Ok(HashAlgorithm::Blake2b),
+        "sha256" => Ok(HashAlgorithm::Sha256),
+        _ => Err(Error::custom("Unexpected hash algorithm")),
     }
 }

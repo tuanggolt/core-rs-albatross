@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 use toml::de::Error as TomlError;
 
-use account::{Account, AccountError, AccountsList, BasicAccount, StakingContract};
+use account::{Account, AccountError, AccountsList, BasicAccount, VestingContract, HashedTimeLockedContract, StakingContract};
 use accounts::Accounts;
 use beserial::{Deserialize, Serialize, SerializingError};
 use block::{Block, MacroBlock, MacroBody, MacroHeader};
@@ -31,6 +31,8 @@ pub enum GenesisBuilderError {
     NoSigningKey,
     #[error("No staking contract address.")]
     NoStakingContractAddress,
+    #[error("No Nimiq 1.0 (legacy) head block")]
+    NoNimLegacyHeadBlock,
     #[error("Invalid timestamp: {0}")]
     InvalidTimestamp(DateTime<Utc>),
     #[error("Serialization failed")]
@@ -56,9 +58,12 @@ pub struct GenesisBuilder {
     pub signing_key: Option<BlsSecretKey>,
     pub seed_message: Option<String>,
     pub timestamp: Option<DateTime<Utc>>,
+    pub nim_1_head_block: Option<config::NimiqLegacyHeadBlock>,
     pub validators: Vec<config::GenesisValidator>,
     pub stakes: Vec<config::GenesisStake>,
-    pub accounts: Vec<config::GenesisAccount>,
+    pub basic_accounts: Vec<config::GenesisBasicAccount>,
+    pub vesting_accounts: Vec<config::GenesisVestingAccount>,
+    pub htlc_accounts: Vec<config::GenesisHTLCAccount>,
     pub staking_contract_address: Option<Address>,
 }
 
@@ -68,9 +73,12 @@ impl GenesisBuilder {
             signing_key: None,
             seed_message: None,
             timestamp: None,
+            nim_1_head_block: None,
             validators: vec![],
             stakes: vec![],
-            accounts: vec![],
+            basic_accounts: vec![],
+            vesting_accounts: vec![],
+            htlc_accounts: vec![],
             staking_contract_address: None,
         }
     }
@@ -108,6 +116,11 @@ impl GenesisBuilder {
         self
     }
 
+    pub fn with_nim_1_head_block(&mut self, nim_1_head_block: config::NimiqLegacyHeadBlock) -> &mut Self {
+        self.nim_1_head_block = Some(nim_1_head_block);
+        self
+    }
+
     pub fn with_genesis_validator(
         &mut self,
         validator_id: ValidatorId,
@@ -138,9 +151,24 @@ impl GenesisBuilder {
         self
     }
 
+    pub fn from_nim_1_blocks_to_timestamp(&self, nim_1_blocks: u64) -> Result<u64, GenesisBuilderError> {
+        if self.nim_1_head_block.is_some() {
+            // Take the last block (head) from the Nimiq 1.0 blockchain.
+            // Then get its timestamp and add the custom delay from the TOML file => This would be the new
+            // timestamp of new blocks in Nimiq 2.0.
+            // Then add the difference of the nimiq 1.0 block number and the Nimiq 1.0 head block => this would
+            // be the new time that there is left from the beginning of Nimiq 2.0 in minutes.
+            // To convert it to seconds, we only need to multiply the difference by 60.
+            let nim_1_head_block = self.nim_1_head_block.as_ref().unwrap();
+            Ok((nim_1_blocks - nim_1_head_block.height) * 60 + nim_1_head_block.timestamp + nim_1_head_block.custom_genesis_delay)
+        } else {
+            Err(GenesisBuilderError::NoNimLegacyHeadBlock)
+        }
+    }
+
     pub fn with_basic_account(&mut self, address: Address, balance: Coin) -> &mut Self {
-        self.accounts
-            .push(config::GenesisAccount { address, balance });
+        self.basic_accounts
+            .push(config::GenesisBasicAccount { address, balance });
         self
     }
 
@@ -152,9 +180,12 @@ impl GenesisBuilder {
             signing_key,
             seed_message,
             timestamp,
+            nim_1_head_block,
             mut validators,
             mut stakes,
-            mut accounts,
+            mut basic_accounts,
+            mut vesting_accounts,
+            mut htlc_accounts,
             staking_contract,
         } = toml::from_str(&read_to_string(path)?)?;
 
@@ -162,9 +193,12 @@ impl GenesisBuilder {
         seed_message.map(|msg| self.with_seed_message(msg));
         timestamp.map(|t| self.with_timestamp(t));
         staking_contract.map(|address| self.with_staking_contract_address(address));
+        nim_1_head_block.map(|nim_1_head_block|self.with_nim_1_head_block(nim_1_head_block));
         self.validators.append(&mut validators);
         self.stakes.append(&mut stakes);
-        self.accounts.append(&mut accounts);
+        self.basic_accounts.append(&mut basic_accounts);
+        self.vesting_accounts.append(&mut vesting_accounts);
+        self.htlc_accounts.append(&mut htlc_accounts);
 
         Ok(self)
     }
@@ -215,10 +249,56 @@ impl GenesisBuilder {
             ),
             Account::Staking(staking_contract),
         ));
-        for genesis_account in &self.accounts {
+
+        for genesis_account in &self.basic_accounts {
             let address = genesis_account.address.clone();
             let account = Account::Basic(BasicAccount {
                 balance: genesis_account.balance,
+            });
+            debug!("Adding genesis account: {}: {:?}", address, account);
+            genesis_accounts.push((address, account));
+        }
+
+        for genesis_account in &self.vesting_accounts {
+            let address = genesis_account.address.clone();
+            let account = Account::Vesting(VestingContract {
+                balance: genesis_account.balance,
+                owner: genesis_account.owner.clone(),
+                // If the vesting start is in the past, use vesting_start_ts
+                // otherwise calculate it.
+                start_time: {
+                    if genesis_account.vesting_start_ts.is_some() {
+                        genesis_account.vesting_start_ts.unwrap()
+                    } else {
+                        self.from_nim_1_blocks_to_timestamp(genesis_account.vesting_start)?
+                    }
+                },
+                // The step is coverted assuming 60 s (1 min) pero block
+                time_step: genesis_account.vesting_step_blocks * 60,
+                step_amount: genesis_account.vesting_step_amount,
+                total_amount: genesis_account.vesting_total_amount,
+            });
+            debug!("Adding genesis account: {}: {:?}", address, account);
+            genesis_accounts.push((address, account));
+        }
+
+        for genesis_account in &self.htlc_accounts {
+            let address = genesis_account.address.clone();
+            let account = Account::HTLC(HashedTimeLockedContract {
+                balance: genesis_account.balance,
+                sender: genesis_account.sender.clone(),
+                recipient: genesis_account.recipient.clone(),
+                hash_algorithm: genesis_account.hash_algorithm,
+                hash_root: genesis_account.hash_root.clone(),
+                hash_count: genesis_account.hash_count,
+                timeout: {
+                    if genesis_account.timeout_ts.is_some() {
+                        genesis_account.timeout_ts.unwrap()
+                    } else {
+                        self.from_nim_1_blocks_to_timestamp(genesis_account.timeout)?
+                    }
+                },
+                total_amount: genesis_account.total_amount,
             });
             debug!("Adding genesis account: {}: {:?}", address, account);
             genesis_accounts.push((address, account));

@@ -86,42 +86,79 @@ staker_address = "NQ64 VP65 7809 JC9D X4XP QDRU KYTN 79JN 46A5"
 balance = 1_000_00000
 validator_id = "0000000000000000000000000000000000000004"
 
-[[accounts]]
-address = "NQ55 X103 EJXG 3S2U 3JNE L779 560T 3LNE 7S60"
-# private_key = "a24591648e20642fe5107d0285c1cc35d67e2033a92566f1217fbd3a14e07abc"
-balance = 10_000_000_00000
+[nim_1_head_block]
+height = 1654148
+timestamp = 1623389203
+custom_genesis_delay = 3600
 
-[[accounts]]
-address = "NQ87 HKRC JYGR PJN5 KQYQ 5TM1 26XX 7TNG YT27"
-# private_key = "3336f25f5b4272a280c8eb8c1288b39bd064dfb32ebc799459f707a0e88c4e5f"
-balance = 10_000_000_00000
+[[vesting_accounts]]
+address = "NQ19 YG54 46TX EHGQ D2R2 V8XA JX84 UFG0 S0MC"
+balance = 42000000000000
+owner = "NQ27 0XGA AMCX XY29 35J1 MB1Y MQKE TQU3 RTL4"
+vesting_start_ts = 1523727000
+vesting_start = 1
+vesting_step_blocks = 259200
+vesting_step_amount = 2100000000000
+vesting_total_amount = 42000000000000
 
-[[accounts]]
-address = "NQ24 M1E1 YYY1 C280 GAEQ ULL4 U31R QH04 HCM7"
-# private_key = "6ca225de8c2a091a31ae48645453641069ae8a9d3158e9d6e004b417661af500"
-balance = 10_000_000_00000
+[[basic_accounts]]
+address = "NQ08 YG5B 5614 932D HQR2 UQXM UEKP 7M71 22QD"
+balance = 52500000000
 
-[[accounts]]
-address = "NQ08 6R71 Y0GB GSXM YQFH X3P3 A53E 3G6K RBVR"
-# private_key = "5899a573451f72a4a1e58c7de3e091a1846d14bd82c98e4bfdaf1857986de7d8"
-balance = 10_000_000_00000
+[[vesting_accounts]]
+address = "NQ87 YGT8 FX8T HEVH RGJB APEN 83HU KER3 4QD9"
+balance = 41041400000
+owner = "NQ59 CFEV KASE BLYT FD0Y XAG6 CHVX R8PS 3V9A"
+vesting_start_ts = 1523727000
+vesting_start = 1
+vesting_step_blocks = 129600
+vesting_step_amount = 20520700000
+vesting_total_amount = 41041400000
 
-[[accounts]]
-address = "NQ62 GH6J A1CK MKQT Q4A1 2NCB KLVF R4K9 2BA1"
-# private_key = "652be07036bf791644260eaa388534d7dbecb579c69bf3b70c0714ae7d5fdcc2"
-balance = 10_000_000_00000
+[[basic_accounts]]
+address = "NQ08 YGX5 09C0 FXU3 V0JP 5CQX Q8CN J5A5 R43F"
+balance = 2460734893
 
-[[accounts]]
-address = "NQ98 H463 YTJQ M717 MQ7L NPVR UJKJ VQ9C RYNF"
-# private_key = "e3e552194e1e56fb47ccc6eb8becea1c1b813ec23ae7613edff12be152a2e812"
-balance = 10_000_000_00000
+[[basic_accounts]]
+address = "NQ39 YH33 QMGV YLYN J9BL DV4S ANSY 348V Q28X"
+balance = 1396008524
 
-[[accounts]]
-address = "NQ41 EBPT ME3M TMUP SMCB 4V44 QQTL N7Q0 MU9R"
-# private_key = "c88cb69af940cc58a1f5aa8f1d943b53893a913af48d873c2e83169644b30edc"
-balance = 10_000_000_00000
+[[basic_accounts]]
+address = "NQ60 YHK0 VF1M SKF3 TBK5 TVS4 SBYB 4P9H BRXL"
+balance = 80000000000
 
-[[accounts]]
-address = "NQ40 GCAA U3UX 8BKD GUN0 PG3T 17HA 4X5H TXVE"
-# private_key = "1ef7aad365c195462ed04c275d47189d5362bbfe36b5e93ce7ba2f3add5f439b"
-balance = 10_000_000_00000
+[[basic_accounts]]
+address = "NQ75 YJQX QYUR 7VB1 L17F P9L3 N5JH AA73 P35C"
+balance = 20679061830
+
+[[basic_accounts]]
+address = "NQ62 YL6A VEDP GKTD XY92 H9BQ 41EG 8DSJ M83T"
+balance = 17175139119
+
+[[basic_accounts]]
+address = "NQ38 YLCN X2PC YQX9 VVSQ 5G0F EAQY X3F5 SF33"
+balance = 82302364
+
+[[basic_accounts]]
+address = "NQ75 YLNT GSRB BUSM FT5T JSK5 KB02 R35P HUGJ"
+balance = 222
+
+[[basic_accounts]]
+address = "NQ87 YLUK E0KY X2E5 QAAV 7BCY 3XEF GJK3 49J0"
+balance = 11000000
+
+[[basic_accounts]]
+address = "NQ48 YM2N E2BG B54P XU90 30AM JCGK BJX2 6RFP"
+balance = 43772120000
+
+[[htlc_accounts]]
+address = "NQ71 YXKM 9QNB E0CT 1TRY T5DP 2LX6 MX51 2D85"
+balance = 2
+sender = "NQ70 DP6D 3AHB ERYN F452 4UJL 5X68 4TJU 2CGE"
+hash_algorithm = "sha256"
+hash_root = "3434366636653237373432303632373237353734363536363666373236333635"
+recipient = "NQ61 V4CR CP5T 2EH5 FKNL LMG5 2CKH Q3Q3 S661"
+hash_count = 1
+timeout_ts = 1540908108
+timeout = 285548
+total_amount = 3
