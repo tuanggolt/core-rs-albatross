@@ -224,6 +224,9 @@ impl Network {
         // TODO add proper config
         SwarmBuilder::new(transport, behaviour, local_peer_id)
             .connection_limits(limits)
+            .executor(Box::new(|fut| {
+                tokio::spawn(fut);
+            }))
             .build()
     }
 
