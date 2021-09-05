@@ -54,7 +54,7 @@ echo '[consensus]'
 required network NIMIQ_NETWORK string
 
 echo '[database]'
-entry path "/home/nimiq/database" string
+entry path "/data/nimiq/database" string
 optional size NIMIQ_DATABASE_SIZE number
 optional max_dbs NIMIQ_MAX_DBS number
 optional no_lmdb_sync NIMIQ_NO_LMDB_SYNC boolean

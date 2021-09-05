@@ -1,4 +1,4 @@
-# Deploy with `flyctl deploy --local-only`
+# fly.toml file generated for core-rs-albatross on 2021-09-04T17:30:34+02:00
 
 app = "core-rs-albatross"
 
@@ -9,19 +9,21 @@ kill_timeout = 5
   image = "core:latest"
 
 [env]
-  LISTEN_ADDRESSES = "/ip4/127.0.0.1/tcp/5000/ws"
-  NIMIQ_NETWORK= "dev-albatross"
-  NIMIQ_LOG_LEVEL= "debug"
-  NIMIQ_VALIDATOR= "validator"
-  RPC_ENABLED= "true"
-  VALIDATOR_KEY = "f8ac8d3d52f72f86a97e83f6ccab9c8f60c70e92e13ea490ea3433b7611ab0058f0584d3e4a2b9856e482440967af01a6c878cb5ff0ea98acb07eec5fd0f5deb1db5fb2843d7bf34d7b9fddba5234943e6c3e491cbe08d071668affdf5d10000"
-  RUST_BACKTRACE = "1"
+  LISTEN_ADDRESSES = "/ip4/0.0.0.0/tcp/8443/ws"
+  NIMIQ_LOG_LEVEL = "debug"
   NIMIQ_LOG_TIMESTAMPS = "true"
-  NIMIQ_MIN_PEERS = "1"
-  NIMIQ_PEER_KEY_FILE = "/home/nimiq/.nimiq/peer_key.dat"
+  NIMIQ_MIN_PEERS = "2"
+  NIMIQ_VALIDATOR = "validator"
+  RPC_ENABLED = "true"
+  RUST_BACKTRACE = "1"
+  VALIDATOR_KEY = "196ffdb1a8acc7cbd76a251aeac0600a1d68b3aba1eba823b5e4dc5dbdcdc730afa752c05ab4f6ef8518384ad514f403c5a088a22b17bf1bc14f8ff8decc2a512c0a200f68d7bdf5a319b30356fe8d1d75ef510aed7a8660968c216c328a0000"
+
+[mounts]
+  destination = "/data"
+  source = "albatross_data"
 
 [[services]]
-  internal_port = 5000
+  internal_port = 8443
   protocol = "tcp"
 
   [services.concurrency]
@@ -29,14 +31,12 @@ kill_timeout = 5
     soft_limit = 10000
 
   [[services.ports]]
-    # handlers = [] // pass through
-    port = 5000
+    port = 8443
 
   [[services.tcp_checks]]
-    grace_period = "5s"
+    grace_period = "10s"
     interval = "30s"
-    port = 5000
-    restart_limit = 6
+    restart_limit = 5
     timeout = "2s"
 
 [[services]]
@@ -48,12 +48,11 @@ kill_timeout = 5
     soft_limit = 10000
 
   [[services.ports]]
-    handlers = ['tls']
+    handlers = ["tls"]
     port = 443
 
   [[services.tcp_checks]]
-    grace_period = "5s"
+    grace_period = "10s"
     interval = "30s"
-    port = 443
-    restart_limit = 6
+    restart_limit = 5
     timeout = "2s"
