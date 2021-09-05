@@ -1,6 +1,6 @@
-# fly.toml file generated for core-rs-albatross on 2021-09-04T17:30:34+02:00
+# fly.toml file generated for core-rs-albatross-seed-2 on 2021-09-05T21:54:57+02:00
 
-app = "core-rs-albatross"
+app = "core-rs-albatross-seed-2"
 
 kill_signal = "SIGINT"
 kill_timeout = 5
@@ -13,10 +13,11 @@ kill_timeout = 5
   NIMIQ_LOG_LEVEL = "debug"
   NIMIQ_LOG_TIMESTAMPS = "true"
   NIMIQ_MIN_PEERS = "2"
+  NIMIQ_SEED_NODES = "/dns4/core-rs-albatross.fly.dev/tcp/8443/ws"
   NIMIQ_VALIDATOR = "validator"
-  RPC_ENABLED = "true"
+  RPC_ENABLED = "false"
   RUST_BACKTRACE = "1"
-  VALIDATOR_KEY = "196ffdb1a8acc7cbd76a251aeac0600a1d68b3aba1eba823b5e4dc5dbdcdc730afa752c05ab4f6ef8518384ad514f403c5a088a22b17bf1bc14f8ff8decc2a512c0a200f68d7bdf5a319b30356fe8d1d75ef510aed7a8660968c216c328a0000"
+  VALIDATOR_KEY = "bfbf1e23855190f03222bb2b19dc9d25843494d22bf8ccc1f7abfe6b3b185b3bf76537ee70e7ac5c7c6d7a0046e671bf610572e1cf89b407a7cd095ab9f0868da80003121a26d4d3be1e1abd10861f6c8601e94e0e448f4b86b7512764460100"
 
 [mounts]
   destination = "/data"
@@ -32,24 +33,6 @@ kill_timeout = 5
 
   [[services.ports]]
     port = 8443
-
-  [[services.tcp_checks]]
-    grace_period = "10s"
-    interval = "30s"
-    restart_limit = 5
-    timeout = "2s"
-
-[[services]]
-  internal_port = 8648
-  protocol = "tcp"
-
-  [services.concurrency]
-    hard_limit = 10000
-    soft_limit = 10000
-
-  [[services.ports]]
-    handlers = ["tls"]
-    port = 443
 
   [[services.tcp_checks]]
     grace_period = "10s"
