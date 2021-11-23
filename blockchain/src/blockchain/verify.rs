@@ -389,7 +389,7 @@ impl Blockchain {
 
             // Get the validators.
             let real_validators = if macro_block.is_election_block() {
-                Some(self.next_validators(&macro_block.header.seed))
+                Some(self.next_validators(&macro_block.header.seed, txn_opt))
             } else {
                 None
             };

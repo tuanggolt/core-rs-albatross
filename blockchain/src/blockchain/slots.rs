@@ -1,3 +1,4 @@
+use nimiq_database::Transaction;
 use nimiq_primitives::policy;
 use nimiq_primitives::slots::Validators;
 use nimiq_vrf::VrfSeed;
@@ -27,11 +28,15 @@ impl Blockchain {
     }
 
     /// Calculates the next validators from a given seed.
-    pub fn next_validators(&self, seed: &VrfSeed) -> Validators {
-        StakingContract::select_validators(
-            &self.state().accounts.tree,
-            &self.read_transaction(),
-            seed,
-        )
+    pub fn next_validators(&self, seed: &VrfSeed, txn_opt: Option<&Transaction>) -> Validators {
+        if let Some(txn) = txn_opt {
+            StakingContract::select_validators(&self.state().accounts.tree, txn, seed)
+        } else {
+            StakingContract::select_validators(
+                &self.state().accounts.tree,
+                &self.read_transaction(),
+                seed,
+            )
+        }
     }
 }

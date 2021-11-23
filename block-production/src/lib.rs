@@ -235,7 +235,7 @@ impl BlockProducer {
 
         // If this is an election block, calculate the validator set for the next epoch.
         let validators = if policy::is_election_block_at(blockchain.block_number() + 1) {
-            Some(blockchain.next_validators(&header.seed))
+            Some(blockchain.next_validators(&header.seed, Some(&txn)))
         } else {
             None
         };
