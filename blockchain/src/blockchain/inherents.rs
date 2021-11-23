@@ -1,4 +1,5 @@
 use beserial::Serialize;
+use db::Transaction;
 use nimiq_account::{Inherent, InherentType, StakingContract};
 use nimiq_block::{ForkProof, MacroHeader, ViewChanges};
 use nimiq_database as db;
@@ -20,11 +21,12 @@ impl Blockchain {
         &self,
         state: &BlockchainState,
         header: &MacroHeader,
+        txn_opt: Option<&Transaction>,
     ) -> Vec<Inherent> {
         let mut inherents: Vec<Inherent> = vec![];
 
         // Every macro block is the end of a batch, so we need to finalize the batch.
-        inherents.append(&mut self.finalize_previous_batch(state, header));
+        inherents.append(&mut self.finalize_previous_batch(state, header, txn_opt));
 
         // If this block is an election block, we also need to finalize the epoch.
         if policy::is_election_block_at(header.block_number) {
@@ -41,7 +43,7 @@ impl Blockchain {
         &self,
         fork_proofs: &[ForkProof],
         view_changes: &Option<ViewChanges>,
-        txn_option: Option<&db::Transaction>,
+        txn_option: Option<&Transaction>,
     ) -> Vec<Inherent> {
         let mut inherents = vec![];
 
@@ -129,10 +131,11 @@ impl Blockchain {
         &self,
         state: &BlockchainState,
         macro_header: &MacroHeader,
+        txn_opt: Option<&Transaction>,
     ) -> Vec<Inherent> {
         let prev_macro_info = &state.macro_info;
 
-        let staking_contract = self.get_staking_contract(None);
+        let staking_contract = self.get_staking_contract(txn_opt);
 
         // Special case for first batch: Batch 0 is finalized by definition.
         if policy::batch_at(macro_header.block_number) - 1 == 0 {
@@ -229,12 +232,21 @@ impl Blockchain {
                 .expect("Overflow in reward");
 
             // Create inherent for the reward.
-            let validator = StakingContract::get_validator(
-                &self.state().accounts.tree,
-                &self.read_transaction(),
-                &validator_slot.validator_address,
-            )
-            .expect("Couldn't find validator in the accounts trie when paying rewards!");
+            let validator = if let Some(txn) = txn_opt {
+                StakingContract::get_validator(
+                    &self.state().accounts.tree,
+                    txn,
+                    &validator_slot.validator_address,
+                )
+                .expect("Couldn't find validator in the accounts trie when paying rewards!")
+            } else {
+                StakingContract::get_validator(
+                    &self.state().accounts.tree,
+                    &self.read_transaction(),
+                    &validator_slot.validator_address,
+                )
+                .expect("Couldn't find validator in the accounts trie when paying rewards!")
+            };
 
             let inherent = Inherent {
                 ty: InherentType::Reward,
@@ -247,7 +259,7 @@ impl Blockchain {
             // burned.
             let account = state
                 .accounts
-                .get(&KeyNibbles::from(&inherent.target), None);
+                .get(&KeyNibbles::from(&inherent.target), txn_opt);
 
             if account.is_none() || account.unwrap().account_type() == AccountType::Basic {
                 num_eligible_slots_for_accepted_inherent.push(num_eligible_slots);

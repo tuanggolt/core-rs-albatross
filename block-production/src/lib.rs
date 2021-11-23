@@ -191,7 +191,8 @@ impl BlockProducer {
         // Get the state.
         let state = blockchain.state();
 
-        let inherents: Vec<Inherent> = blockchain.create_macro_block_inherents(state, &header);
+        let inherents: Vec<Inherent> =
+            blockchain.create_macro_block_inherents(state, &header, None);
 
         // Update the state and add the state root to the header.
         header.state_root = state
