@@ -9,11 +9,11 @@ on:
 jobs:
 
   reconnect-test:
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, ubuntu-20.04]
 
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-python@v1
+    - uses: actions/setup-python@v2
     - uses: BSFishy/pip-action@v1
       with:
         packages: |
@@ -35,7 +35,7 @@ jobs:
       with:
         command: build
     - name: Executes the 4 validators reconnecting scenario
-      run: |          
+      run: |
           bash scripts/devnet/devnet.sh
     - name: Archive test results
       if: always()
@@ -46,11 +46,11 @@ jobs:
             temp-logs/
 
   erase-state-test:
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, ubuntu-20.04]
 
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-python@v1
+    - uses: actions/setup-python@v2
     - uses: BSFishy/pip-action@v1
       with:
         packages: |
@@ -72,7 +72,7 @@ jobs:
       with:
         command: build
     - name: Executes the 4 validators reconnecting scenario erasing all their state
-      run: |          
+      run: |
           bash scripts/devnet/devnet.sh -e
     - name: Archive test results
       if: always()
@@ -83,11 +83,11 @@ jobs:
             temp-logs/
 
   erase-database-test:
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, ubuntu-20.04]
 
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-python@v1
+    - uses: actions/setup-python@v2
     - uses: BSFishy/pip-action@v1
       with:
         packages: |
@@ -109,7 +109,7 @@ jobs:
       with:
         command: build
     - name: Executes the 4 validators reconnecting scenario eraseing their database
-      run: |          
+      run: |
           bash scripts/devnet/devnet.sh -d
     - name: Archive test results
       if: always()
@@ -120,11 +120,12 @@ jobs:
             temp-logs/
 
   reconnect-test-with-spammer:
-    runs-on: ubuntu-20.04
+
+    runs-on: [self-hosted, ubuntu-20.04]
 
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-python@v1
+    - uses: actions/setup-python@v2
     - uses: BSFishy/pip-action@v1
       with:
         packages: |
