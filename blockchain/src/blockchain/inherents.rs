@@ -132,7 +132,7 @@ impl Blockchain {
     ) -> Vec<Inherent> {
         let prev_macro_info = &state.macro_info;
 
-        let staking_contract = self.get_staking_contract();
+        let staking_contract = self.get_staking_contract(None);
 
         // Special case for first batch: Batch 0 is finalized by definition.
         if policy::batch_at(macro_header.block_number) - 1 == 0 {

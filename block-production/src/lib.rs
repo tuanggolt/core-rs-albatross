@@ -220,13 +220,17 @@ impl BlockProducer {
         // Note: We are fetching the previous disabled set here because we have already updated the
         // state. So the staking contract has already moved the disabled set for this batch into the
         // previous disabled set.
-        let disabled_set = blockchain.get_staking_contract().previous_disabled_slots();
+        let disabled_set = blockchain
+            .get_staking_contract(Some(&txn))
+            .previous_disabled_slots();
 
         // Calculate the lost reward set for the current validator set.
         // Note: We are fetching the previous lost rewards set here because we have already updated the
         // state. So the staking contract has already moved the lost rewards set for this batch into the
         // previous lost rewards set.
-        let lost_reward_set = blockchain.get_staking_contract().previous_lost_rewards();
+        let lost_reward_set = blockchain
+            .get_staking_contract(Some(&txn))
+            .previous_lost_rewards();
 
         // If this is an election block, calculate the validator set for the next epoch.
         let validators = if policy::is_election_block_at(blockchain.block_number() + 1) {

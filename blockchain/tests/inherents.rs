@@ -40,7 +40,7 @@ fn it_can_create_batch_finalization_inherents() {
     let inherents = blockchain.finalize_previous_batch(blockchain.state(), &macro_header);
     assert_eq!(inherents.len(), 2);
 
-    let active_validators = blockchain.get_staking_contract().active_validators;
+    let active_validators = blockchain.get_staking_contract(None).active_validators;
 
     let (validator_address, _) = active_validators.iter().next().unwrap();
 

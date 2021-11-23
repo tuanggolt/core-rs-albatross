@@ -371,7 +371,7 @@ impl BlockchainInterface for BlockchainDispatcher {
 
     /// Returns a map of the currently active validator's addresses and balances.
     async fn get_active_validators(&mut self) -> Result<HashMap<Address, Coin>, Error> {
-        let staking_contract = self.blockchain.read().get_staking_contract();
+        let staking_contract = self.blockchain.read().get_staking_contract(None);
 
         let mut active_validators = HashMap::new();
 
@@ -389,7 +389,7 @@ impl BlockchainInterface for BlockchainDispatcher {
 
         // FIXME: Race condition
         let block_number = blockchain.block_number();
-        let staking_contract = blockchain.get_staking_contract();
+        let staking_contract = blockchain.get_staking_contract(None);
 
         Ok(SlashedSlots {
             block_number,
@@ -405,7 +405,7 @@ impl BlockchainInterface for BlockchainDispatcher {
 
         // FIXME: Race condition
         let block_number = blockchain.block_number();
-        let staking_contract = blockchain.get_staking_contract();
+        let staking_contract = blockchain.get_staking_contract(None);
 
         Ok(SlashedSlots {
             block_number,
@@ -420,7 +420,7 @@ impl BlockchainInterface for BlockchainDispatcher {
 
         // FIXME: Race condition
         let block_number = blockchain.block_number();
-        let staking_contract = blockchain.get_staking_contract();
+        let staking_contract = blockchain.get_staking_contract(None);
 
         Ok(ParkedSet {
             block_number,

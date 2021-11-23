@@ -381,7 +381,7 @@ impl Blockchain {
         // from our own state and then compare it with the body hash in the header.
         if let Block::Macro(macro_block) = block {
             // Get the lost rewards and disabled sets.
-            let staking_contract = self.get_staking_contract();
+            let staking_contract = self.get_staking_contract(txn_opt);
 
             let real_lost_rewards = staking_contract.previous_lost_rewards();
 

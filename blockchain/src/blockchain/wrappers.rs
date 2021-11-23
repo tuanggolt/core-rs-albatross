@@ -53,10 +53,10 @@ impl Blockchain {
     }
 
     /// Returns the current staking contract.
-    pub fn get_staking_contract(&self) -> StakingContract {
+    pub fn get_staking_contract(&self, txn_opt: Option<&Transaction>) -> StakingContract {
         let staking_contract_address = StakingContract::get_key_staking_contract();
 
-        match self.state.accounts.get(&staking_contract_address, None) {
+        match self.state.accounts.get(&staking_contract_address, txn_opt) {
             Some(Account::Staking(x)) => x,
             _ => {
                 unreachable!()
