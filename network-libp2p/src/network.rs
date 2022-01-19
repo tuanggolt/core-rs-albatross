@@ -22,6 +22,7 @@ use libp2p::{
     dns,
     gossipsub::{
         GossipsubEvent, GossipsubMessage, IdentTopic, MessageAcceptance, MessageId, TopicHash,
+        TopicScoreParams,
     },
     identify::IdentifyEvent,
     identity::Keypair,
@@ -638,7 +639,19 @@ impl Network {
 
                         state.gossip_topics.insert(topic.hash(), (tx, validate));
 
-                        output.send(Ok(rx)).ok();
+                        match swarm
+                            .behaviour_mut()
+                            .gossipsub
+                            .set_topic_params(topic, TopicScoreParams::default())
+                        {
+                            Ok(_) => output.send(Ok(rx)).ok(),
+                            Err(e) => output
+                                .send(Err(NetworkError::TopicScoreParams {
+                                    topic_name,
+                                    error: e,
+                                }))
+                                .ok(),
+                        };
                     }
 
                     // Apparently we're already subscribed.
