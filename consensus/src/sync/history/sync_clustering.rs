@@ -93,8 +93,11 @@ impl<TNetwork: Network> HistorySync<TNetwork> {
                 })
             }
             Err(e) => {
-                log::error!("Request block hashes failed: {}", e);
-                agent.peer.close(CloseReason::Other);
+                log::error!(
+                    "Request block hashes failed from peer {:?} and error: {}",
+                    agent.peer.id(),
+                    e
+                );
                 None
             }
         }
