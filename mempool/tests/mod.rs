@@ -331,7 +331,7 @@ async fn push_same_tx_twice() {
         Address::default(),
     );
 
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -470,7 +470,7 @@ async fn mempool_get_txn_max_size() {
         Address::default(),
     );
 
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -544,7 +544,7 @@ async fn mempool_get_txn_ordered() {
         Address::default(),
     );
 
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -621,7 +621,7 @@ async fn push_tx_with_insufficient_balance() {
         Address::default(),
     );
 
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -688,7 +688,7 @@ async fn multiple_transactions_multiple_senders() {
         Address::default(),
     );
 
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -765,7 +765,7 @@ async fn mempool_tps() {
     );
 
     // Generate the genesis and blockchain
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -848,7 +848,7 @@ async fn multiple_start_stop() {
     );
 
     // Generate the genesis and blockchain
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
@@ -987,7 +987,7 @@ async fn mempool_update() {
     );
 
     // Generate the genesis and blockchain
-    let genesis_info = genesis_builder.generate().unwrap();
+    let genesis_info = genesis_builder.generate(env.clone()).unwrap();
 
     let blockchain = Arc::new(RwLock::new(
         Blockchain::with_genesis(
