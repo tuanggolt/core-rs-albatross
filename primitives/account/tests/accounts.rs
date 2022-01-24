@@ -1,5 +1,5 @@
 use rand::prelude::StdRng;
-use rand::SeedableRng;
+use rand::{RngCore, SeedableRng};
 use std::convert::TryFrom;
 use std::time::Instant;
 use tempdir::TempDir;
@@ -67,13 +67,18 @@ fn generate_transactions(
     let mut txns_len = 0;
     let mut txns: Vec<Transaction> = vec![];
 
-    log::debug!("Generating transactions and accounts");
-
+    println!("Generating transactions and accounts");
+    let mut rng = StdRng::seed_from_u64(0);
     for mempool_transaction in mempool_transactions {
+        let mut bytes = [0u8; 20];
+        rng.fill_bytes(&mut bytes);
+        let recipient = Address::from(bytes);
+
         // Generate transactions
         let txn = Transaction::new_basic(
             mempool_transaction.sender.address.clone(),
-            mempool_transaction.recipient.address.clone(),
+            //mempool_transaction.recipient.address.clone(),
+            recipient,
             Coin::from_u64_unchecked(mempool_transaction.value),
             Coin::from_u64_unchecked(mempool_transaction.fee),
             1,
@@ -501,10 +506,11 @@ fn accounts_performance() {
     let env = if VOLATILE_ENV {
         VolatileEnvironment::new(10).unwrap()
     } else {
-        let tmp_dir =
-            TempDir::new("accounts_performance_test").expect("Could not create temporal directory");
-        let tmp_dir = tmp_dir.path().to_str().unwrap();
-        log::debug!("Creating a non volatile environment in {}", tmp_dir);
+        //let tmp_dir =
+        //    TempDir::new("accounts_performance_test").expect("Could not create temporal directory");
+        //let tmp_dir = tmp_dir.path().to_str().unwrap();
+        let tmp_dir = "temp-state/";
+        println!("Creating a non volatile environment in {}", tmp_dir);
         LmdbEnvironment::new(
             tmp_dir,
             1024 * 1024 * 1024 * 1024,
@@ -514,12 +520,12 @@ fn accounts_performance() {
         .unwrap()
     };
     // Generate and sign transaction from an address
-    let num_txns = 10_000;
+    let num_txns = 1000;
     let mut rng = StdRng::seed_from_u64(0);
-    let balance = 100;
+    let balance = 1;
     let mut mempool_transactions = vec![];
-    let sender_balances = vec![num_txns as u64 * 10; num_txns];
-    let recipient_balances = vec![0; num_txns];
+    let sender_balances = vec![1000000; num_txns];
+    let recipient_balances = vec![1000000; num_txns];
     let mut genesis_builder = GenesisBuilder::default();
     let address_validator = Address::from([1u8; Address::SIZE]);
     let reward = Inherent {
@@ -546,7 +552,7 @@ fn accounts_performance() {
         mempool_transactions.push(mempool_transaction);
     }
     let (txns, _) = generate_transactions(mempool_transactions);
-    log::debug!("Done generating {} transactions and accounts", txns.len());
+    //log::debug!("Done generating {} transactions and accounts", txns.len());
 
     // Add validator to genesis
     genesis_builder.with_genesis_validator(
@@ -579,25 +585,48 @@ fn accounts_performance() {
 
     println!("Done adding accounts to genesis {}", txns.len());
 
-    let mut txn = WriteTransaction::new(&env);
-    let start = Instant::now();
-    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], 1, 1);
-    match result {
-        Ok(_) => assert!(true),
-        Err(err) => assert!(false, "Received {}", err),
-    };
-    let duration = start.elapsed();
-    println!(
-        "Time elapsed after account commit: {} ms, Accounts per second {}",
-        duration.as_millis(),
-        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
-    );
-    let start = Instant::now();
-    txn.commit();
-    let duration = start.elapsed();
-    println!(
-        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
-        duration.as_millis(),
-        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
-    );
+    // Continuosly generate and send transactions
+    let mut height: u32 = 1;
+    let mut timestamp: u64 = 1;
+
+    loop {
+        println!("Starting new iteration, current block height: {}", height);
+        let mut mempool_transactions = vec![];
+        // Generate transactions
+        for i in 0..num_txns {
+            let mempool_transaction = MempoolTransaction {
+                fee: 1 as u64,
+                value: 1,
+                recipient: recipient_accounts[i as usize].clone(),
+                sender: sender_accounts[i as usize].clone(),
+            };
+            mempool_transactions.push(mempool_transaction);
+        }
+
+        let (txns, _) = generate_transactions(mempool_transactions);
+
+        let mut txn = WriteTransaction::new(&env);
+        let start = Instant::now();
+        let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+        match result {
+            Ok(_) => assert!(true),
+            Err(err) => assert!(false, "Received {}", err),
+        };
+        let duration = start.elapsed();
+        println!(
+            "Time elapsed after account commit: {} ms, Accounts per second {}",
+            duration.as_millis(),
+            num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+        );
+        let start = Instant::now();
+        txn.commit();
+        let duration = start.elapsed();
+        println!(
+            "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+            duration.as_millis(),
+            num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+        );
+        height += 1;
+        timestamp += 1;
+    }
 }
