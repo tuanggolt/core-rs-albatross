@@ -236,40 +236,22 @@ where
             match &result {
                 // If the event is a NewRound it is propagated as is.
                 AggregationResult::NewRound(round) => {
-                    if step == TendermintStep::PreCommit {
-                        // PreCommit Aggreations are never requested again, so the aggregation can be canceled.
-                        self.event_sender
-                            .send(AggregationEvent::Cancel(*round, step))
-                            .await
-                            .map_err(|err| {
-                                debug!("event_sender.send failed: {:?}", err);
-                                TendermintError::AggregationError
-                            })?;
-                    }
-
                     debug!("Aggregations returned a NewRound({})", round);
                     return Ok(result);
                 }
 
                 // If the event is an Aggregation there are some comparisons to be made before it can be returned (or not)
                 AggregationResult::Aggregation(map) => {
-                    // keep trck of the combined weight of all proposals which this node has not signed.
+                    // keep track of the combined weight of all proposals which this node has not signed.
                     let mut combined_weight = 0usize;
                     let mut total_weight = 0usize;
 
                     // iterate all proposals present in this contribution
                     for (proposal, (_, weight)) in map.iter() {
                         if *weight >= policy::TWO_F_PLUS_ONE as usize {
-                            if step == TendermintStep::PreCommit {
-                                // PreCommit Aggreations are never requested again, so the aggregation can be canceled.
-                                self.event_sender
-                                    .send(AggregationEvent::Cancel(round, step))
-                                    .await
-                                    .map_err(|err| {
-                                        debug!("event_sender.send failed: {:?}", err);
-                                        TendermintError::AggregationError
-                                    })?;
-                            }
+                            // If a definite result is reached, previous PreCommit is no longer necessary
+                            self.try_cancel_previous_precommit(round, step.clone())
+                                .await?;
                             trace!("Tendermint: {}-{:?}: A proposal has > 2f+1", &round, &step);
                             return Ok(result);
                         }
@@ -284,16 +266,9 @@ where
 
                     // combined weight of all proposals excluding the one this node signed reached 2f+1
                     if combined_weight >= policy::TWO_F_PLUS_ONE as usize {
-                        if step == TendermintStep::PreCommit {
-                            // PreCommit Aggreations are never requested again, so the aggregation can be canceled.
-                            self.event_sender
-                                .send(AggregationEvent::Cancel(round, step))
-                                .await
-                                .map_err(|err| {
-                                    debug!("event_sender.send failed: {:?}", err);
-                                    TendermintError::AggregationError
-                                })?;
-                        }
+                        // If a definite result is reached, previous PreCommit is no longer necessary
+                        self.try_cancel_previous_precommit(round, step.clone())
+                            .await?;
                         trace!(
                             "Tendermint: {}-{:?}: All other proposals have > 2f + 1 votes",
                             &round,
@@ -304,18 +279,17 @@ where
 
                     // none of the above but every signatory is present and thus no improvement can be made
                     if total_weight == policy::SLOTS as usize {
-                        if step == TendermintStep::PreCommit {
-                            // PreCommit Aggreations are never requested again, so the aggregation can be canceled.
-                            self.event_sender
-                                .send(AggregationEvent::Cancel(round, step))
-                                .await
-                                .map_err(|err| {
-                                    debug!("event_sender.send failed: {:?}", err);
-                                    TendermintError::AggregationError
-                                })?;
-                        }
+                        // previous PreCommit is no longer necessary
+                        self.try_cancel_previous_precommit(round, step.clone())
+                            .await?;
                         trace!("Tendermint: {}-{:?}: Everybody signed", &round, &step);
                         return Ok(result);
+                    }
+
+                    // Cancel previous PreCommit once we reached a safe threshold for the current PreVote (if it is a PreVote)
+                    if total_weight >= policy::F_PLUS_ONE as usize {
+                        self.try_cancel_previous_precommit(round, step.clone())
+                            .await?;
                     }
                 }
             }
@@ -327,16 +301,8 @@ where
                 Ok(Some(event)) => result = event,
                 Ok(None) => return Err(TendermintError::AggregationError),
                 Err(_) => {
-                    if step == TendermintStep::PreCommit {
-                        // PreCommit Aggreations are never requested again, so the aggregation can be canceled.
-                        self.event_sender
-                            .send(AggregationEvent::Cancel(round, step))
-                            .await
-                            .map_err(|err| {
-                                debug!("event_sender.send failed: {:?}", err);
-                                TendermintError::AggregationError
-                            })?;
-                    }
+                    self.try_cancel_previous_precommit(round, step.clone())
+                        .await?;
                     return Ok(result);
                 }
             }
@@ -380,5 +346,31 @@ where
         self.background_task
             .take()
             .expect("The background stream cannot be creaed twice.")
+    }
+
+    #[inline]
+    /// Cancels previos PreCommit aggregations if it is safe to do so.
+    ///
+    /// It is safe to do so when a future round has produced at least a f+1 PreVote aggregation as at that point it
+    /// is sufficient for other nodes to potentially skip to that round.
+    async fn try_cancel_previous_precommit(
+        &mut self,
+        round: u32,
+        step: TendermintStep,
+    ) -> Result<(), TendermintError> {
+        if step == TendermintStep::PreVote && round > 0 {
+            // PreCommit Aggreations are never requested again, so the aggregation can be canceled.
+            self.event_sender
+                .send(AggregationEvent::Cancel(
+                    round - 1,
+                    TendermintStep::PreCommit,
+                ))
+                .await
+                .map_err(|err| {
+                    debug!("event_sender.send failed: {:?}", err);
+                    TendermintError::AggregationError
+                })?;
+        }
+        Ok(())
     }
 }

@@ -162,10 +162,19 @@ impl<N: ValidatorNetwork> TendermintAggregations<N> {
         }
     }
 
-    pub fn cancel_aggregation(&self, round: u32, step: TendermintStep) {
+    fn cancel_aggregation(&self, round: u32, step: TendermintStep) {
         if let Some(descriptor) = self.aggregation_descriptors.get(&(round, step)) {
             trace!("canceling aggregation for {}-{:?}", &round, &step);
             descriptor.is_running.store(false, Ordering::Relaxed);
+        }
+    }
+
+    fn cleanup_aggregations(&self, round: u32) {
+        for ((r, s), descriptor) in self.aggregation_descriptors.iter() {
+            if s == &TendermintStep::PreCommit && r < &round {
+                trace!("canceling aggregation for {}-{:?}", &r, &s);
+                descriptor.is_running.store(false, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -219,6 +228,9 @@ impl<N: ValidatorNetwork + 'static> Stream for TendermintAggregations<N> {
                             self.validator_registry.signers_weight(&future_contributors)
                         {
                             if weight >= policy::F_PLUS_ONE as usize {
+                                // Whenever a fasttrack to a future round is triggered all PreCommit aggregations prior to it
+                                // can be cancelled.
+                                self.cleanup_aggregations(message.tag.round_number - 1);
                                 return Poll::Ready(Some(TendermintAggregationEvent::NewRound(
                                     message.tag.round_number,
                                 )));

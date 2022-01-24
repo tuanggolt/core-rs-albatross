@@ -59,7 +59,9 @@ impl<N: ValidatorNetwork> std::fmt::Debug for AggregationEvent<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AggregationEvent::Start(i, _, _) => f.debug_struct("Start").field("id", i).finish(),
-            AggregationEvent::Cancel(r, s) => f.debug_struct("Start").field("id", &(r, s)).finish(),
+            AggregationEvent::Cancel(r, s) => {
+                f.debug_struct("Cancel").field("id", &(r, s)).finish()
+            }
         }
     }
 }
