@@ -108,7 +108,7 @@ impl TemporaryBlockProducer {
 
             Block::Micro(self.producer.next_micro_block(
                 &blockchain,
-                blockchain.time.now() + height as u64 * 1000,
+                blockchain.time.now() + (2 * height) as u64 * 1000,
                 view_number,
                 view_change_proof,
                 vec![],

@@ -1,9 +1,3 @@
-use rand::prelude::StdRng;
-use rand::{RngCore, SeedableRng};
-use std::convert::TryFrom;
-use std::time::Instant;
-use tempdir::TempDir;
-
 use beserial::Serialize;
 use nimiq_account::{Accounts, Inherent, InherentType};
 use nimiq_account::{Receipt, Receipts};
@@ -19,6 +13,12 @@ use nimiq_primitives::coin::Coin;
 use nimiq_primitives::networks::NetworkId;
 use nimiq_transaction::Transaction;
 use nimiq_trie::key_nibbles::KeyNibbles;
+use rand::prelude::StdRng;
+use rand::{RngCore, SeedableRng};
+use std::convert::TryFrom;
+use std::time::Instant;
+use tempdir::TempDir;
+use unroll::unroll_for_loops;
 
 const VOLATILE_ENV: bool = false;
 
@@ -63,17 +63,18 @@ fn generate_accounts(
 
 fn generate_transactions(
     mempool_transactions: Vec<MempoolTransaction>,
+    mut random_seed: StdRng,
 ) -> (Vec<Transaction>, usize) {
     let mut txns_len = 0;
     let mut txns: Vec<Transaction> = vec![];
 
     println!("Generating transactions and accounts");
-    let mut rng = StdRng::seed_from_u64(0);
+
     for mempool_transaction in mempool_transactions {
         let mut bytes = [0u8; 20];
-        rng.fill_bytes(&mut bytes);
+        random_seed.fill_bytes(&mut bytes);
         let recipient = Address::from(bytes);
-
+        // println!(" Recipient Address: {} ", recipient);
         // Generate transactions
         let txn = Transaction::new_basic(
             mempool_transaction.sender.address.clone(),
@@ -509,18 +510,18 @@ fn accounts_performance() {
         //let tmp_dir =
         //    TempDir::new("accounts_performance_test").expect("Could not create temporal directory");
         //let tmp_dir = tmp_dir.path().to_str().unwrap();
-        let tmp_dir = "temp-state/";
+        let tmp_dir = "/Users/claudioviquez/Workspace/db";
         println!("Creating a non volatile environment in {}", tmp_dir);
         LmdbEnvironment::new(
             tmp_dir,
             1024 * 1024 * 1024 * 1024,
             21,
-            LmdbFlags::NOMETASYNC,
+            LmdbFlags::NOMETASYNC | LmdbFlags::NOSYNC,
         )
         .unwrap()
     };
     // Generate and sign transaction from an address
-    let num_txns = 1000;
+    let num_txns = 10000;
     let mut rng = StdRng::seed_from_u64(0);
     let balance = 1;
     let mut mempool_transactions = vec![];
@@ -551,12 +552,13 @@ fn accounts_performance() {
         };
         mempool_transactions.push(mempool_transaction);
     }
-    let (txns, _) = generate_transactions(mempool_transactions);
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
     //log::debug!("Done generating {} transactions and accounts", txns.len());
 
     // Add validator to genesis
     genesis_builder.with_genesis_validator(
-        Address::from(&KeyPair::generate(&mut rng)),
+        Address::from(&KeyPair::generate(&mut rng.clone())),
         PublicKey::from([0u8; 32]),
         BLSKeyPair::generate(&mut rng).public_key,
         Address::default(),
@@ -588,7 +590,6 @@ fn accounts_performance() {
     // Continuosly generate and send transactions
     let mut height: u32 = 1;
     let mut timestamp: u64 = 1;
-
     loop {
         println!("Starting new iteration, current block height: {}", height);
         let mut mempool_transactions = vec![];
@@ -603,7 +604,7 @@ fn accounts_performance() {
             mempool_transactions.push(mempool_transaction);
         }
 
-        let (txns, _) = generate_transactions(mempool_transactions);
+        let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
 
         let mut txn = WriteTransaction::new(&env);
         let start = Instant::now();
@@ -629,4 +630,2421 @@ fn accounts_performance() {
         height += 1;
         timestamp += 1;
     }
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
+
+    println!("Starting new iteration, current block height: {}", height);
+    let mut mempool_transactions = vec![];
+    // Generate transactions
+    for i in 0..num_txns {
+        let mempool_transaction = MempoolTransaction {
+            fee: 1 as u64,
+            value: 1,
+            recipient: recipient_accounts[i as usize].clone(),
+            sender: sender_accounts[i as usize].clone(),
+        };
+        mempool_transactions.push(mempool_transaction);
+    }
+
+    let (txns, _) = generate_transactions(mempool_transactions, rng.clone());
+
+    let mut txn = WriteTransaction::new(&env);
+    let start = Instant::now();
+    let result = accounts.commit(&mut txn, &txns[..], &rewards[..], height, timestamp);
+    match result {
+        Ok(_) => assert!(true),
+        Err(err) => assert!(false, "Received {}", err),
+    };
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed after account commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    let start = Instant::now();
+    txn.commit();
+    let duration = start.elapsed();
+    println!(
+        "Time ellapsed after txn commit: {} ms, Accounts per second {}",
+        duration.as_millis(),
+        num_txns as f64 / (duration.as_millis() as f64 / 1000_f64),
+    );
+    height += 1;
+    timestamp += 1;
 }

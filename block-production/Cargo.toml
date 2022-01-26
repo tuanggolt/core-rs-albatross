@@ -20,6 +20,7 @@ maintenance = { status = "experimental" }
 log = "0.4"
 hex = "0.4"
 parking_lot = { git = "https://github.com/styppo/parking_lot.git" }
+rand = "0.8"
 
 beserial = { path = "../beserial" }
 nimiq-account = { path = "../primitives/account" }
