@@ -219,6 +219,10 @@ impl<N: ValidatorNetwork + 'static> Stream for TendermintAggregations<N> {
                             self.validator_registry.signers_weight(&future_contributors)
                         {
                             if weight >= policy::F_PLUS_ONE as usize {
+                                debug!(
+                                    "Skip ahead to round {} because f plus 1 threshold reached.",
+                                    &message.tag.round_number
+                                );
                                 return Poll::Ready(Some(TendermintAggregationEvent::NewRound(
                                     message.tag.round_number,
                                 )));

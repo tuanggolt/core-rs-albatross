@@ -127,6 +127,7 @@ impl<
                 self.state.current_checkpoint = Checkpoint::OnTimeoutPrevote;
             }
             VoteResult::NewRound(round) => {
+                log::debug!("NewRound({}) received", round);
                 // If the network got f+1 messages for a round greater than our current one, we are
                 // warned with the NewRound result and we start a new round.
                 // This corresponds to lines 55-56 of Tendermint consensus algorithm.
@@ -201,6 +202,7 @@ impl<
                 self.state.current_checkpoint = Checkpoint::OnTimeoutPrecommit;
             }
             VoteResult::NewRound(round) => {
+                log::debug!("NewRound({}) received", round);
                 // If the network got f+1 messages for a round greater than our current one, we are
                 // warned with the NewRound result and we start a new round.
                 // This corresponds to lines 55-56 of Tendermint consensus algorithm.

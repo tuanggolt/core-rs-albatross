@@ -34,6 +34,7 @@ impl<
 {
     /// Lines 11-21 of Tendermint consensus algorithm (Algorithm 1)
     pub(crate) async fn start_round(&mut self) -> Result<(), TendermintError> {
+        debug!("Starting round: {}", self.state.round);
         self.state.current_proposal = None;
         self.state.current_proposal_vr = None;
         self.state.current_proof = None;
