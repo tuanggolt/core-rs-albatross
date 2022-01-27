@@ -34,6 +34,7 @@ impl Config {
             .max_transmit_size(1_000_000) // TODO find a reasonable value for this parameter
             .validation_mode(libp2p::gossipsub::ValidationMode::Permissive)
             .heartbeat_interval(Duration::from_millis(700))
+            .max_ihave_length(10_000)
             .build()
             .expect("Invalid Gossipsub config");
 
