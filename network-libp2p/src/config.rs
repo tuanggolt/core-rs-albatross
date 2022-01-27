@@ -45,6 +45,7 @@ impl Config {
                 message.data.hash(&mut s);
                 MessageId::from(s.finish().to_string())
             })
+            .max_ihave_length(10_000)
             .build()
             .expect("Invalid Gossipsub config");
 
