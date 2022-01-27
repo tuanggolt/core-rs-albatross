@@ -133,10 +133,11 @@ impl<N: Network> Inner<N> {
             self.push_block(block, pubsub_id, PushOpResult::Head);
         } else if block_number > head_height + self.config.window_max {
             log::warn!(
-                "Discarding block #{}.{} outside of buffer window (max {})",
+                "Discarding block #{}.{} outside of buffer window (max {}), pubsubID {:?}",
                 block_number,
                 view_number,
                 head_height + self.config.window_max,
+                pubsub_id
             );
 
             if let Some(peer) = self.network.get_peer(peer_id) {
@@ -144,18 +145,20 @@ impl<N: Network> Inner<N> {
             }
         } else if self.buffer.len() >= self.config.buffer_max {
             log::warn!(
-                "Discarding block #{}.{}, buffer full (max {})",
+                "Discarding block #{}.{}, buffer full (max {}), pubsubID: {:?}",
                 block_number,
                 view_number,
                 self.buffer.len(),
+                pubsub_id
             )
         } else if block_number <= macro_height {
             // Block is from a previous batch/epoch, discard it.
             log::warn!(
-                "Discarding block #{}.{}, we're already at macro block #{}",
+                "Discarding block #{}.{}, we're already at macro block #{}, pubsubID {:?}",
                 block_number,
                 view_number,
-                macro_height
+                macro_height,
+                pubsub_id,
             );
         } else {
             // Block is inside the buffer window, put it in the buffer.
@@ -176,6 +179,7 @@ impl<N: Network> Inner<N> {
                 block_known
             );
             if block_known {
+                log::debug!("Known block: {:?}", pubsub_id);
                 return;
             }
 
@@ -566,9 +570,11 @@ impl<N: Network, TReq: RequestComponent<N::PeerType>> Stream for BlockQueue<N, T
                     // Ignore all block announcements until there is at least one synced peer.
                     if num_peers > 0 {
                         log::debug!(
-                            "Received block #{}.{} via gossipsub",
+                            "Received block #{}.{} via gossipsub, pubsubID {:?}, block info: {}",
                             block.block_number(),
-                            block.view_number()
+                            block.view_number(),
+                            pubsub_id,
+                            block
                         );
                         this.inner.on_block_announced(
                             block,

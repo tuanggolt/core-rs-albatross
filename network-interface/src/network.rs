@@ -57,8 +57,9 @@ pub enum MsgAcceptance {
     Reject,
     Ignore,
 }
+use std::fmt::Debug;
 
-pub trait PubsubId<PeerId>: Send + Sync {
+pub trait PubsubId<PeerId>: Debug + Send + Sync {
     fn propagation_source(&self) -> PeerId;
 }
 
