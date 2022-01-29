@@ -6,7 +6,6 @@ use rayon::prelude::*;
 use nimiq_bls::utils::bytes_to_bits;
 use nimiq_primitives::policy::SLOTS;
 
-use crate::merkle_tree::merkle_tree_construct;
 use crate::serialize::serialize_g2_mnt6;
 
 /// This is the depth of the PKTree circuit.
@@ -21,7 +20,7 @@ pub const PK_TREE_BREADTH: usize = 2_usize.pow(PK_TREE_DEPTH as u32);
 #[allow(unreachable_code, unused_variables)]
 pub fn pk_tree_construct(public_keys: Vec<G1Projective>) -> Vec<u8> {
     // FIXME This computation is too slow ATM. Disable it for the time being.
-    Default::default()
+    vec![0u8; 96]
 
     // TODO: Needs to be updated to Poseidon hash.
     // // Checking that the number of public keys is equal to the number of validator slots.

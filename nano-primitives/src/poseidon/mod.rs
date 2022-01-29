@@ -30,5 +30,5 @@ pub fn create_parameters<F: PrimeField>(
     }
 }
 
-mod mnt4;
-mod mnt6;
+pub mod mnt4;
+pub mod mnt6;

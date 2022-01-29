@@ -1,12 +1,12 @@
 use ark_crypto_primitives::prf::blake2s::constraints::evaluate_blake2s_with_parameters;
 use ark_crypto_primitives::prf::Blake2sWithParameterBlock;
-use ark_ff::{One, PrimeField};
+use ark_ec::SWModelParameters;
+use ark_ff::{BitIteratorBE, BitIteratorLE, One, PrimeField};
 use ark_mnt4_753::Fr as MNT4Fr;
 use ark_mnt6_753::constraints::{Fq3Var, G2Var};
-use ark_mnt6_753::{Fq, Fq3, G2Affine};
-
+use ark_mnt6_753::{Fq, Fq3, G2Affine, Parameters, MNT6_753};
 use ark_r1cs_std::fields::FieldVar;
-use ark_r1cs_std::prelude::{AllocVar, Boolean, CondSelectGadget, EqGadget};
+use ark_r1cs_std::prelude::{AllocVar, Boolean, CondSelectGadget, CurveVar, EqGadget};
 use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
@@ -131,7 +131,7 @@ impl HashToCurve {
         // Compare the coordinates of our hash point to the calculated coordinates.
         let hash_var_affine = hash_var.to_affine()?;
 
-        let y_coordinate = YToBitGadget::y_to_bit_g2(cs, &hash_var_affine)?;
+        let y_coordinate = YToBitGadget::y_to_bit_g2(cs.clone(), &hash_var_affine)?;
         let x_coordinate = hash_var_affine.x;
         let inf_coordinate = hash_var_affine.infinity;
 
@@ -139,13 +139,8 @@ impl HashToCurve {
         y_coordinate.enforce_equal(y_bit)?;
         inf_coordinate.enforce_equal(&Boolean::constant(false))?;
 
-        // TODO! The hash point still needs to be scaled by the cofactor of the curve. Otherwise the
-        //  signature won't verify.
-        // We now scale by the cofactor.
-        //let scaled_hash_var = hash_var_affine.fixed_scalar_mul_le()?;
-
-        // Return the hash point.
-        Ok(hash_var)
+        // Finally we scale by the cofactor.
+        Self::scale_by_cofactor(cs, hash_var)
     }
 
     /// Returns the nonce i (as a vector of big endian bits), such that (x + i) is a valid x coordinate for G2.
@@ -187,5 +182,48 @@ impl HashToCurve {
         }
 
         unreachable!()
+    }
+
+    /// Scales a given G2 point in the MNT6-753 curve by the cofactor of the curve.
+    fn scale_by_cofactor(
+        cs: ConstraintSystemRef<MNT4Fr>,
+        point: G2Var,
+    ) -> Result<G2Var, SynthesisError> {
+        // https://github.com/arkworks-rs/curves/blob/master/mnt6_753/src/curves/g2.rs
+        let cofactor: &[u64] = &[
+            17839255819456086016,
+            500623104730997740,
+            2110252009236161768,
+            1500878543414750896,
+            12839751506594314239,
+            8978537329634833065,
+            13830010955957826199,
+            7626514311663165506,
+            14876243211944528805,
+            2316601947950921451,
+            2601177562497904269,
+            18300670698693155036,
+            17321427554953155530,
+            12586270719596716948,
+            807965545138267130,
+            13086323046094411844,
+            16597411233431396880,
+            5578519820383338987,
+            16478065054289650824,
+            12110148809888520863,
+            5901144846689643164,
+            3407195776166256068,
+            14663852814447346059,
+            13435169368,
+        ];
+
+        // Transform the cofactor into little-endian bits.
+        let cofactor_bits: Vec<bool> = BitIteratorLE::new(cofactor).collect();
+
+        // Allocate the bits as a constant in the circuit.
+        let cofactor_bits_var = Vec::<Boolean<MNT4Fr>>::new_constant(cs.clone(), cofactor_bits)?;
+
+        // Now multiply the point by the cofactor.
+        point.scalar_mul_le(cofactor_bits_var.iter())
     }
 }

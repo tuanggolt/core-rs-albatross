@@ -1,9 +1,8 @@
-use std::io;
-
 use ark_groth16::Proof;
 use ark_mnt6_753::MNT6_753;
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::SerializationError;
+use std::io;
 use thiserror::Error;
 
 #[cfg(feature = "prover")]

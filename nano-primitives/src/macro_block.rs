@@ -15,30 +15,39 @@ pub struct MacroBlock {
     /// The Tendermint round number for this block.
     pub round_number: u32,
     /// This is simply the Blake2b hash of the entire macro block header.
-    pub header_hash: [u8; 32],
-    /// This is the aggregated signature of the signers for this block.
-    pub signature: G2Projective,
+    pub header_hash: Vec<u8>,
+    /// This is the Poseidon hash of the public keys of the validators that are in this block's
+    /// validator list (they are the ones that will be producing blocks during the next epoch).
+    pub pk_hash: Vec<u8>,
     /// This is a bitmap stating which validators signed this block.
     pub signer_bitmap: Vec<bool>,
+    /// This is the aggregated signature of the signers for this block.
+    pub signature: G2Projective,
 }
 
 impl MacroBlock {
     /// This function generates a macro block that has no signature or bitmap.
-    pub fn without_signatures(block_number: u32, round_number: u32, header_hash: [u8; 32]) -> Self {
+    pub fn without_signatures(
+        block_number: u32,
+        round_number: u32,
+        header_hash: Vec<u8>,
+        pk_hash: Vec<u8>,
+    ) -> Self {
         MacroBlock {
             block_number,
             round_number,
             header_hash,
-            signature: G2Projective::zero(),
+            pk_hash,
             signer_bitmap: vec![false; SLOTS as usize],
+            signature: G2Projective::zero(),
         }
     }
 
     /// This function signs a macro block given a validator's secret key and signer id (which is
     /// simply the position in the signer bitmap).
-    pub fn sign(&mut self, sk: &Fr, signer_id: usize, pk_tree_root: &[u8]) {
+    pub fn sign(&mut self, sk: &Fr, signer_id: usize) {
         // Generate the hash point for the signature.
-        let hash_point = self.hash(pk_tree_root);
+        let hash_point = self.hash();
 
         // Generates the signature.
         let signature = hash_point.mul(sk.into_repr());
@@ -54,7 +63,7 @@ impl MacroBlock {
     /// point used in validator's signatures. It works like this:
     ///     1. Get the header hash and the pk_tree_root.
     ///     2. Calculate the first hash like so:
-    ///             first_hash = Blake2s( header_hash || pk_tree_root )
+    ///             first_hash = Blake2s( header_hash || pk_hash )
     ///     3. Calculate the second (and final) hash like so:
     ///             second_hash = Blake2s( 0x04 || round number || block number || 0x01 || first_hash )
     ///        The first four fields (0x04, round number, block number, 0x01) are needed for the
@@ -62,10 +71,10 @@ impl MacroBlock {
     ///     4. Finally, we take the second hash and map it to an elliptic curve point using the
     ///        "try-and-increment" method.
     /// The function || means concatenation.
-    pub fn hash(&self, pk_tree_root: &[u8]) -> G2Projective {
+    pub fn hash(&self) -> G2Projective {
         let mut first_bytes = self.header_hash.to_vec();
 
-        first_bytes.extend(pk_tree_root);
+        first_bytes.extend(&self.pk_hash);
 
         let first_hash = first_bytes.hash::<Blake2sHash>();
 
@@ -90,16 +99,16 @@ impl Default for MacroBlock {
         MacroBlock {
             block_number: 0,
             round_number: 0,
-            header_hash: [0; 32],
-            signature: G2Projective::prime_subgroup_generator(),
+            header_hash: vec![0; 32],
+            pk_hash: vec![0; 95],
             signer_bitmap: vec![true; SLOTS as usize],
+            signature: G2Projective::prime_subgroup_generator(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::pk_tree_construct;
     use nimiq_block::{MacroBlock as Block, MacroBody as Body, MultiSignature, TendermintProof};
     use nimiq_bls::{AggregateSignature, KeyPair};
     use nimiq_collections::BitSet;
@@ -107,6 +116,8 @@ mod tests {
     use nimiq_primitives::policy::SLOTS;
     use nimiq_primitives::slots::{Validator, Validators};
     use nimiq_utils::key_rng::SecureGenerate;
+
+    use crate::pk_tree_construct;
 
     use super::*;
 
@@ -144,23 +155,23 @@ mod tests {
 
         block.body = Some(body);
 
-        // Get the pk_tree_root.
+        // Get the pk_hash.
         let public_keys = validators
             .voting_keys()
             .iter()
             .map(|pk| pk.public_key)
             .collect();
 
-        let pk_tree_root = pk_tree_construct(public_keys);
+        let pk_hash = pk_tree_construct(public_keys);
 
         // Get the header hash.
-        let header_hash = block.hash();
+        let header_hash = block.hash().as_bytes().to_vec();
 
         // Create the nano_primitives MacroBlock.
-        let mut nano_block = MacroBlock::without_signatures(0, 0, header_hash.into());
+        let mut nano_block = MacroBlock::without_signatures(0, 0, header_hash, pk_hash);
 
         for (i, sk) in validator_keys.iter().enumerate() {
-            nano_block.sign(sk, i, &pk_tree_root);
+            nano_block.sign(sk, i);
         }
 
         // Create the TendermintProof using our signature.

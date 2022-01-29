@@ -1,51 +1,51 @@
+use ark_crypto_primitives::crh::poseidon::constraints::{
+    CRHGadget, CRHParametersVar, TwoToOneCRHGadget,
+};
+use ark_crypto_primitives::crh::TwoToOneCRHSchemeGadget;
 use ark_mnt4_753::Fr as MNT4Fr;
 use ark_mnt6_753::constraints::G1Var;
 use ark_r1cs_std::bits::boolean::Boolean;
 use ark_r1cs_std::prelude::UInt32;
+use ark_r1cs_std::ToBitsGadget;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-
-use crate::gadgets::mnt4::{PedersenHashGadget, SerializeGadget};
 
 /// This gadget is meant to calculate the "state commitment" in-circuit, which is simply a commitment,
 /// for a given block, of the block number concatenated with the root of a Merkle tree over the public
 /// keys. We don't calculate the Merkle tree from the public keys. We just serialize the block number
-/// and the Merkle tree root, feed it to the Pedersen hash function and serialize the output. This
+/// and the Merkle tree root, feed it to the Poseidon hash function and serialize the output. This
 /// provides an efficient way of compressing the state and representing it across different curves.
 pub struct StateCommitmentGadget;
 
 impl StateCommitmentGadget {
     /// Calculates the state commitment.
     pub fn evaluate(
-        cs: ConstraintSystemRef<MNT4Fr>,
         block_number: &UInt32<MNT4Fr>,
         header_hash: &[Boolean<MNT4Fr>],
         pk_tree_root: &[Boolean<MNT4Fr>],
-        pedersen_generators: &[G1Var],
+        poseidon_params: &CRHParametersVar<MNT4Fr>,
     ) -> Result<Vec<Boolean<MNT4Fr>>, SynthesisError> {
-        // Initialize Boolean vector.
+        // Initialize Boolean vector for the first field element.
         let mut bits = vec![];
 
-        // The block number comes in little endian all the way.
-        // So, a reverse will put it into big endian.
-        let mut block_number_be = block_number.to_bits_le();
+        // Reverse and append the header hash.
+        let mut header_hash_le = header_hash.to_vec();
+        header_hash_le.reverse();
+        bits.append(&mut header_hash_le);
 
-        block_number_be.reverse();
+        // Append the block number.
+        bits.extend(block_number.to_bits_le());
 
-        bits.extend(block_number_be);
+        // Create the first field element.
+        let elem_1 = Boolean::le_bits_to_fp_var(&bits)?;
 
-        // Append the header hash.
-        bits.extend_from_slice(header_hash);
+        // Create the second field element from the public key tree root.
+        let elem_2 = Boolean::le_bits_to_fp_var(&pk_tree_root)?;
 
-        // Append the public key tree root.
-        bits.extend_from_slice(pk_tree_root);
+        // Calculate the hash.
+        let hash = TwoToOneCRHGadget::<MNT4Fr>::evaluate(poseidon_params, &elem_1, &elem_2)?;
 
-        // Calculate the Pedersen hash.
-        let hash = PedersenHashGadget::evaluate(&bits, pedersen_generators)?;
-
-        // Serialize the Pedersen hash.
-        let serialized_bits = SerializeGadget::serialize_g1(cs, &hash)?;
-
-        Ok(serialized_bits)
+        // Serialize the hash and return it.
+        hash.to_bits_be()
     }
 }
 
@@ -62,6 +62,7 @@ mod tests {
 
     use nimiq_bls::pedersen::pedersen_generators;
     use nimiq_bls::utils::bytes_to_bits;
+    use nimiq_nano_primitives::mnt6::poseidon_mnt6_t3_parameters;
     use nimiq_nano_primitives::{pk_tree_construct, state_commitment};
     use nimiq_primitives::policy::SLOTS;
 
@@ -71,6 +72,9 @@ mod tests {
     fn state_commitment_works() {
         // Initialize the constraint system.
         let cs = ConstraintSystem::<MNT4Fr>::new_ref();
+
+        // Create the Poseidon parameters.
+        let poseidon_params = poseidon_mnt6_t3_parameters();
 
         // Create random number generator.
         let rng = &mut test_rng();
@@ -91,6 +95,7 @@ mod tests {
             block_number,
             header_hash,
             public_keys.clone(),
+            &poseidon_params,
         ));
 
         // Convert the header hash to bits.
@@ -111,24 +116,23 @@ mod tests {
         let pk_tree_root_var =
             Vec::<Boolean<MNT4Fr>>::new_witness(cs.clone(), || Ok(pk_tree_root_bits)).unwrap();
 
-        // Allocate the generators.
-        let generators_var =
-            Vec::<G1Var>::new_witness(cs.clone(), || Ok(pedersen_generators(3))).unwrap();
+        // Allocate the Poseidon parameters in the circuit.
+        let poseidon_var =
+            CRHParametersVar::<MNT4Fr>::new_witness(cs.clone(), || Ok(poseidon_params)).unwrap();
 
         // Evaluate state commitment using the gadget version.
         let gadget_comm = StateCommitmentGadget::evaluate(
-            cs,
             &block_number_var,
             &header_hash_var,
             &pk_tree_root_var,
-            &generators_var,
+            &poseidon_var,
         )
         .unwrap();
 
-        // Compare the two versions bit by bit.
-        assert_eq!(primitive_comm.len(), gadget_comm.len());
-        for i in 0..primitive_comm.len() {
-            assert_eq!(primitive_comm[i], gadget_comm[i].value().unwrap());
+        // Compare the two versions bit by bit. The first 7 bits of the primitive version are padding.
+        assert_eq!(primitive_comm.len(), gadget_comm.len() + 7);
+        for i in 0..gadget_comm.len() {
+            assert_eq!(primitive_comm[i + 7], gadget_comm[i].value().unwrap());
         }
     }
 }

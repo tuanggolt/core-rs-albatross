@@ -3,8 +3,6 @@
 
 pub use macro_block_wrapper::MacroBlockWrapperCircuit;
 pub use merger_wrapper::MergerWrapperCircuit;
-pub use pk_tree_node::PKTreeNodeCircuit;
 
 pub mod macro_block_wrapper;
 pub mod merger_wrapper;
-pub mod pk_tree_node;

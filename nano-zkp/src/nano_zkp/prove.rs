@@ -1,7 +1,3 @@
-use std::fs;
-use std::fs::{DirBuilder, File};
-use std::path::Path;
-
 use ark_crypto_primitives::SNARK;
 use ark_ec::{PairingEngine, ProjectiveCurve};
 use ark_ff::Zero;
@@ -10,8 +6,6 @@ use ark_mnt4_753::{Fr as MNT4Fr, MNT4_753};
 use ark_mnt6_753::{Fr as MNT6Fr, G1Projective as G1MNT6, G2Projective as G2MNT6, MNT6_753};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::UniformRand;
-use rand::{thread_rng, CryptoRng, Rng};
-
 use nimiq_bls::pedersen::{pedersen_generators, pedersen_hash};
 use nimiq_bls::utils::{byte_to_le_bits, bytes_to_bits};
 use nimiq_nano_primitives::{merkle_tree_prove, serialize_g1_mnt6};
@@ -19,6 +13,10 @@ use nimiq_nano_primitives::{
     pk_tree_construct, state_commitment, vk_commitment, MacroBlock, PK_TREE_BREADTH, PK_TREE_DEPTH,
 };
 use nimiq_primitives::policy::{EPOCH_LENGTH, SLOTS};
+use rand::{thread_rng, CryptoRng, Rng};
+use std::fs;
+use std::fs::{DirBuilder, File};
+use std::path::Path;
 
 use crate::circuits::mnt4::{
     MacroBlockCircuit, MergerCircuit, PKTreeLeafCircuit as LeafMNT4, PKTreeNodeCircuit as NodeMNT4,

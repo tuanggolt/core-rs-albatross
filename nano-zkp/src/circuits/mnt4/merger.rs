@@ -7,7 +7,6 @@ use ark_mnt6_753::constraints::{FqVar, G1Var, PairingVar};
 use ark_mnt6_753::{Fq, MNT6_753};
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-
 use nimiq_bls::pedersen::pedersen_generators;
 
 use crate::gadgets::mnt4::VKCommitmentGadget;

@@ -93,19 +93,36 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff773c0ef8c655c98071d3026a63950798a66b2f45baef22d8334c1756f1bd18"
 dependencies = [
- "ark-ec",
- "ark-ff",
- "ark-nonnative-field",
- "ark-r1cs-std",
- "ark-relations",
- "ark-serialize",
- "ark-snark",
- "ark-std",
- "blake2",
- "derivative",
- "digest",
- "rayon",
- "tracing",
+    "ark-ec",
+    "ark-ff",
+    "ark-relations",
+    "ark-serialize",
+    "ark-snark",
+    "ark-std",
+    "blake2",
+    "derivative",
+    "digest",
+]
+
+[[package]]
+name = "ark-crypto-primitives"
+version = "0.3.0"
+source = "git+https://github.com/brunoffranca/crypto-primitives#e01ade86cb0d7d86d0346208125300f5e609a912"
+dependencies = [
+    "ark-ec",
+    "ark-ff",
+    "ark-nonnative-field",
+    "ark-r1cs-std",
+    "ark-relations",
+    "ark-serialize",
+    "ark-snark",
+    "ark-sponge",
+    "ark-std",
+    "blake2",
+    "derivative",
+    "digest",
+    "rayon",
+    "tracing",
 ]
 
 [[package]]
@@ -167,20 +184,19 @@ dependencies = [
 [[package]]
 name = "ark-groth16"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38f8fff7468e947130b5caf9bdd27de8b913cf30e15104b4f0cd301726b3d897"
+source = "git+https://github.com/brunoffranca/groth16#bd7e278b40dac00e7845555df83be548262182ed"
 dependencies = [
- "ark-crypto-primitives",
- "ark-ec",
- "ark-ff",
- "ark-poly",
- "ark-r1cs-std",
- "ark-relations",
- "ark-serialize",
- "ark-std",
- "derivative",
- "rayon",
- "tracing",
+    "ark-crypto-primitives 0.3.0 (git+https://github.com/brunoffranca/crypto-primitives)",
+    "ark-ec",
+    "ark-ff",
+    "ark-poly",
+    "ark-r1cs-std",
+    "ark-relations",
+    "ark-serialize",
+    "ark-std",
+    "derivative",
+    "rayon",
+    "tracing",
 ]
 
 [[package]]
@@ -2959,17 +2975,17 @@ dependencies = [
 name = "nimiq-bls"
 version = "0.1.0"
 dependencies = [
- "ark-crypto-primitives",
- "ark-ec",
- "ark-ff",
- "ark-mnt4-753",
- "ark-mnt6-753",
- "ark-std",
- "beserial",
- "blake2-rfc",
- "byteorder",
- "hex",
- "log",
+    "ark-crypto-primitives 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+    "ark-ec",
+    "ark-ff",
+    "ark-mnt4-753",
+    "ark-mnt6-753",
+    "ark-std",
+    "beserial",
+    "blake2-rfc",
+    "byteorder",
+    "hex",
+    "log",
  "nimiq-hash",
  "nimiq-utils",
  "parking_lot 0.11.2 (git+https://github.com/styppo/parking_lot.git)",
@@ -3382,40 +3398,40 @@ dependencies = [
 name = "nimiq-nano-primitives"
 version = "0.1.0"
 dependencies = [
- "ark-crypto-primitives",
- "ark-ec",
- "ark-ff",
- "ark-groth16",
- "ark-mnt4-753",
- "ark-mnt6-753",
- "nimiq-block",
- "nimiq-bls",
- "nimiq-collections",
- "nimiq-hash",
- "nimiq-keys",
- "nimiq-primitives",
- "nimiq-utils",
- "num-traits",
- "rand 0.8.4",
- "rayon",
+    "ark-crypto-primitives 0.3.0 (git+https://github.com/brunoffranca/crypto-primitives)",
+    "ark-ec",
+    "ark-ff",
+    "ark-groth16",
+    "ark-mnt4-753",
+    "ark-mnt6-753",
+    "ark-sponge",
+    "nimiq-block",
+    "nimiq-bls",
+    "nimiq-collections",
+    "nimiq-hash",
+    "nimiq-keys",
+    "nimiq-primitives",
+    "nimiq-utils",
+    "num-traits",
+    "rand 0.8.4",
+    "rayon",
 ]
 
 [[package]]
 name = "nimiq-nano-zkp"
 version = "0.1.0"
 dependencies = [
- "ark-crypto-primitives",
- "ark-ec",
- "ark-ff",
- "ark-groth16",
- "ark-mnt4-753",
- "ark-mnt6-753",
- "ark-r1cs-std",
- "ark-relations",
- "ark-serialize",
- "ark-sponge",
- "ark-std",
- "nimiq-bls",
+    "ark-crypto-primitives 0.3.0 (git+https://github.com/brunoffranca/crypto-primitives)",
+    "ark-ec",
+    "ark-ff",
+    "ark-groth16",
+    "ark-mnt4-753",
+    "ark-mnt6-753",
+    "ark-r1cs-std",
+    "ark-relations",
+    "ark-serialize",
+    "ark-std",
+    "nimiq-bls",
  "nimiq-nano-primitives",
  "nimiq-primitives",
  "rand 0.8.4",
