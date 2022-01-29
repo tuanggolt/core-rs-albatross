@@ -3,8 +3,6 @@
 
 pub use macro_block::MacroBlockCircuit;
 //pub use merger::MergerCircuit;
-pub use pk_tree_leaf::PKTreeLeafCircuit;
 
 pub mod macro_block;
 //pub mod merger;
-pub mod pk_tree_leaf;

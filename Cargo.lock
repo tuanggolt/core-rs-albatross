@@ -2986,12 +2986,12 @@ dependencies = [
     "byteorder",
     "hex",
     "log",
- "nimiq-hash",
- "nimiq-utils",
- "parking_lot 0.11.2 (git+https://github.com/styppo/parking_lot.git)",
- "rand 0.8.4",
- "serde",
- "thiserror",
+    "nimiq-hash",
+    "nimiq-utils",
+    "parking_lot 0.11.2 (git+https://github.com/styppo/parking_lot.git)",
+    "rand 0.8.4",
+    "serde",
+    "thiserror",
 ]
 
 [[package]]
@@ -3432,10 +3432,10 @@ dependencies = [
     "ark-serialize",
     "ark-std",
     "nimiq-bls",
- "nimiq-nano-primitives",
- "nimiq-primitives",
- "rand 0.8.4",
- "thiserror",
+    "nimiq-nano-primitives",
+    "nimiq-primitives",
+    "rand 0.8.4",
+    "thiserror",
 ]
 
 [[package]]
