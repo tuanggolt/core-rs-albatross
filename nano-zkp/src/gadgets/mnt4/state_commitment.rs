@@ -44,8 +44,13 @@ impl StateCommitmentGadget {
         // Calculate the hash.
         let hash = TwoToOneCRHGadget::<MNT4Fr>::evaluate(poseidon_params, &elem_1, &elem_2)?;
 
-        // Serialize the hash and return it.
-        hash.to_bits_be()
+        // Serialize the hash.
+        let mut hash_bits = hash.to_bits_be()?;
+
+        // We discard the first bit since public inputs in our circuits can only have 752 bits.
+        hash_bits.remove(0);
+
+        Ok(hash_bits)
     }
 }
 
@@ -129,10 +134,10 @@ mod tests {
         )
         .unwrap();
 
-        // Compare the two versions bit by bit. The first 7 bits of the primitive version are padding.
-        assert_eq!(primitive_comm.len(), gadget_comm.len() + 7);
+        // Compare the two versions bit by bit.
+        assert_eq!(primitive_comm.len(), gadget_comm.len());
         for i in 0..gadget_comm.len() {
-            assert_eq!(primitive_comm[i + 7], gadget_comm[i].value().unwrap());
+            assert_eq!(primitive_comm[i], gadget_comm[i].value().unwrap());
         }
     }
 }

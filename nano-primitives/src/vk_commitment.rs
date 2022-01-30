@@ -14,8 +14,8 @@ use crate::serialize_fq_mnt6;
 /// We calculate it by first separating the verifying key into field elements and feeding them to
 /// the Poseidon hash function, then we serialize the output and convert it to bits. This provides
 /// an efficient way of compressing the state and representing it across different curves.
-/// Note that the first 7 bits of the resulting vector will be padding since the original commitment
-/// gadget only returns 753 bits.
+/// Note that we discard the first byte of the resulting since the original commitment
+/// gadget only returns 752 bits.
 pub fn vk_commitment(
     vk: &VerifyingKey<MNT6_753>,
     poseidon_params: &PoseidonParameters<Fq>,
@@ -47,5 +47,5 @@ pub fn vk_commitment(
     // Serialize the hash.
     let bytes = serialize_fq_mnt6(&hash);
 
-    Vec::from(bytes.as_ref())
+    bytes[1..].to_vec()
 }

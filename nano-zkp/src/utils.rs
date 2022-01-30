@@ -43,6 +43,7 @@ pub fn unpack_inputs<F: PrimeField>(input: FpVar<F>) -> Result<Vec<Boolean<F>>, 
 
     bits.pop();
 
+    assert_eq!(bits.len(), 752);
     Ok(bits)
 }
 

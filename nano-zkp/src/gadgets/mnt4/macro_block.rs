@@ -117,7 +117,7 @@ impl MacroBlockGadget {
         let mut second_bits = vec![];
 
         // Add the first byte.
-        let byte = UInt8::constant(0x04);
+        let byte = UInt8::new_constant(cs.clone(), 0x04)?;
 
         let mut bits = byte.to_bits_be()?;
 
@@ -138,7 +138,7 @@ impl MacroBlockGadget {
         second_bits.append(&mut block_number_bits);
 
         // Add another byte.
-        let byte = UInt8::constant(0x01);
+        let byte = UInt8::new_constant(cs.clone(), 0x01)?;
 
         let mut bits = byte.to_bits_be()?;
 

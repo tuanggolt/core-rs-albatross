@@ -12,12 +12,8 @@ use rand::{thread_rng, CryptoRng, Rng};
 use std::fs::{DirBuilder, File};
 use std::path::Path;
 
-use crate::circuits::mnt4::{
-    MacroBlockCircuit, MergerCircuit, PKTreeLeafCircuit as LeafMNT4, PKTreeNodeCircuit as NodeMNT4,
-};
-use crate::circuits::mnt6::{
-    MacroBlockWrapperCircuit, MergerWrapperCircuit, PKTreeNodeCircuit as NodeMNT6,
-};
+use crate::circuits::mnt4::{MacroBlockCircuit, MergerCircuit};
+use crate::circuits::mnt6::{MacroBlockWrapperCircuit, MergerWrapperCircuit};
 use crate::{NanoZKP, NanoZKPError};
 
 impl NanoZKP {
@@ -27,18 +23,6 @@ impl NanoZKP {
     /// it. Note that the parameter generation can take longer than one hour, even two on some computers.
     pub fn setup() -> Result<(), NanoZKPError> {
         let rng = &mut thread_rng();
-
-        NanoZKP::setup_pk_tree_leaf(rng, "pk_tree_5")?;
-
-        NanoZKP::setup_pk_tree_node_mnt6(rng, "pk_tree_5", "pk_tree_4", 4)?;
-
-        NanoZKP::setup_pk_tree_node_mnt4(rng, "pk_tree_4", "pk_tree_3", 3)?;
-
-        NanoZKP::setup_pk_tree_node_mnt6(rng, "pk_tree_3", "pk_tree_2", 2)?;
-
-        NanoZKP::setup_pk_tree_node_mnt4(rng, "pk_tree_2", "pk_tree_1", 1)?;
-
-        NanoZKP::setup_pk_tree_node_mnt6(rng, "pk_tree_1", "pk_tree_0", 0)?;
 
         NanoZKP::setup_macro_block(rng)?;
 
@@ -51,160 +35,9 @@ impl NanoZKP {
         Ok(())
     }
 
-    fn setup_pk_tree_leaf<R: CryptoRng + Rng>(rng: &mut R, name: &str) -> Result<(), NanoZKPError> {
-        // Create dummy inputs.
-        let pks = vec![G1MNT6::rand(rng); SLOTS as usize / PK_TREE_BREADTH];
-
-        let pk_tree_nodes = vec![G1MNT6::rand(rng); PK_TREE_DEPTH];
-
-        let pk_tree_root = vec![MNT4Fr::rand(rng); 2];
-
-        let agg_pk_commitment = vec![MNT4Fr::rand(rng); 2];
-
-        let signer_bitmap = MNT4Fr::rand(rng);
-
-        let path = MNT4Fr::rand(rng);
-
-        // Create parameters for our circuit
-        let circuit = LeafMNT4::new(
-            pks,
-            pk_tree_nodes,
-            pk_tree_root,
-            agg_pk_commitment,
-            signer_bitmap,
-            path,
-        );
-
-        let (pk, vk) = Groth16::<MNT4_753>::setup(circuit, rng)?;
-
-        // Save keys to file.
-        NanoZKP::keys_to_file(pk, vk, name)
-    }
-
-    fn setup_pk_tree_node_mnt6<R: CryptoRng + Rng>(
-        rng: &mut R,
-        vk_file: &str,
-        name: &str,
-        tree_level: usize,
-    ) -> Result<(), NanoZKPError> {
-        // Load the verifying key from file.
-        let mut file = File::open(format!("verifying_keys/{}.bin", vk_file))?;
-
-        let vk_child = VerifyingKey::deserialize_unchecked(&mut file)?;
-
-        // Create dummy inputs.
-        let left_proof = Proof {
-            a: G1MNT4::rand(rng).into_affine(),
-            b: G2MNT4::rand(rng).into_affine(),
-            c: G1MNT4::rand(rng).into_affine(),
-        };
-
-        let right_proof = Proof {
-            a: G1MNT4::rand(rng).into_affine(),
-            b: G2MNT4::rand(rng).into_affine(),
-            c: G1MNT4::rand(rng).into_affine(),
-        };
-
-        let pk_tree_root = vec![MNT6Fr::rand(rng); 2];
-
-        let left_agg_pk_commitment = vec![MNT6Fr::rand(rng); 2];
-
-        let right_agg_pk_commitment = vec![MNT6Fr::rand(rng); 2];
-
-        let signer_bitmap = MNT6Fr::rand(rng);
-
-        let path = MNT6Fr::rand(rng);
-
-        // Create parameters for our circuit
-        let circuit = NodeMNT6::new(
-            tree_level,
-            vk_child,
-            left_proof,
-            right_proof,
-            pk_tree_root,
-            left_agg_pk_commitment,
-            right_agg_pk_commitment,
-            signer_bitmap,
-            path,
-        );
-
-        let (pk, vk) = Groth16::<MNT6_753>::setup(circuit, rng)?;
-
-        // Save keys to file.
-        NanoZKP::keys_to_file(pk, vk, name)
-    }
-
-    fn setup_pk_tree_node_mnt4<R: CryptoRng + Rng>(
-        rng: &mut R,
-        vk_file: &str,
-        name: &str,
-        tree_level: usize,
-    ) -> Result<(), NanoZKPError> {
-        // Load the verifying key from file.
-        let mut file = File::open(format!("verifying_keys/{}.bin", vk_file))?;
-
-        let vk_child = VerifyingKey::deserialize_unchecked(&mut file)?;
-
-        // Create dummy inputs.
-        let left_proof = Proof {
-            a: G1MNT6::rand(rng).into_affine(),
-            b: G2MNT6::rand(rng).into_affine(),
-            c: G1MNT6::rand(rng).into_affine(),
-        };
-
-        let right_proof = Proof {
-            a: G1MNT6::rand(rng).into_affine(),
-            b: G2MNT6::rand(rng).into_affine(),
-            c: G1MNT6::rand(rng).into_affine(),
-        };
-
-        let agg_pk_chunks = vec![G1MNT6::rand(rng); 4];
-
-        let pk_tree_root = vec![MNT4Fr::rand(rng); 2];
-
-        let agg_pk_commitment = vec![MNT4Fr::rand(rng); 2];
-
-        let signer_bitmap = MNT4Fr::rand(rng);
-
-        let path = MNT4Fr::rand(rng);
-
-        // Create parameters for our circuit
-        let circuit = NodeMNT4::new(
-            tree_level,
-            vk_child,
-            left_proof,
-            right_proof,
-            agg_pk_chunks,
-            pk_tree_root,
-            agg_pk_commitment,
-            signer_bitmap,
-            path,
-        );
-
-        let (pk, vk) = Groth16::<MNT4_753>::setup(circuit, rng)?;
-
-        // Save keys to file.
-        NanoZKP::keys_to_file(pk, vk, name)
-    }
-
     fn setup_macro_block<R: CryptoRng + Rng>(rng: &mut R) -> Result<(), NanoZKPError> {
-        // Load the verifying key from file.
-        let mut file = File::open("verifying_keys/pk_tree_0.bin")?;
-
-        let vk_pk_tree = VerifyingKey::deserialize_unchecked(&mut file)?;
-
         // Create dummy inputs.
-        let agg_pk_chunks = vec![G1MNT6::rand(rng); 2];
-
-        let proof = Proof {
-            a: G1MNT6::rand(rng).into_affine(),
-            b: G2MNT6::rand(rng).into_affine(),
-            c: G1MNT6::rand(rng).into_affine(),
-        };
-
-        let mut bytes = [0u8; 95];
-        rng.fill_bytes(&mut bytes);
-        let initial_pk_tree_root = bytes_to_bits(&bytes);
+        let initial_pks = vec![G1MNT6::rand(rng); SLOTS as usize];
 
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes);
@@ -214,39 +47,35 @@ impl NanoZKP {
 
         let round_number = u32::rand(rng);
 
-        let mut bytes = [0u8; 95];
-        rng.fill_bytes(&mut bytes);
-        let final_pk_tree_root = bytes_to_bits(&bytes);
-
-        let initial_state_commitment = vec![MNT4Fr::rand(rng); 2];
-
-        let final_state_commitment = vec![MNT4Fr::rand(rng); 2];
-
         let mut header_hash = [0u8; 32];
         rng.fill_bytes(&mut header_hash);
 
-        let signature = G2MNT6::rand(rng);
+        let mut pk_hash = [0u8; 95];
+        rng.fill_bytes(&mut bytes);
 
         let mut bytes = [0u8; SLOTS as usize / 8];
         rng.fill_bytes(&mut bytes);
         let signer_bitmap = bytes_to_bits(&bytes);
 
+        let signature = G2MNT6::rand(rng);
+
         let block = MacroBlock {
             block_number,
             round_number,
-            header_hash,
-            signature,
+            header_hash: header_hash.to_vec(),
+            pk_hash: pk_hash.to_vec(),
             signer_bitmap,
+            signature,
         };
+
+        let initial_state_commitment = MNT4Fr::rand(rng);
+
+        let final_state_commitment = MNT4Fr::rand(rng);
 
         // Create parameters for our circuit
         let circuit = MacroBlockCircuit::new(
-            vk_pk_tree,
-            agg_pk_chunks,
-            proof,
-            initial_pk_tree_root,
+            initial_pks,
             initial_header_hash,
-            final_pk_tree_root,
             block,
             initial_state_commitment,
             final_state_commitment,
@@ -271,9 +100,9 @@ impl NanoZKP {
             c: G1MNT4::rand(rng).into_affine(),
         };
 
-        let initial_state_commitment = vec![MNT6Fr::rand(rng); 2];
+        let initial_state_commitment = MNT6Fr::rand(rng);
 
-        let final_state_commitment = vec![MNT6Fr::rand(rng); 2];
+        let final_state_commitment = MNT6Fr::rand(rng);
 
         // Create parameters for our circuit
         let circuit = MacroBlockWrapperCircuit::new(
@@ -322,11 +151,11 @@ impl NanoZKP {
 
         let genesis_flag = bool::rand(rng);
 
-        let initial_state_commitment = vec![MNT4Fr::rand(rng); 2];
+        let initial_state_commitment = MNT4Fr::rand(rng);
 
-        let final_state_commitment = vec![MNT4Fr::rand(rng); 2];
+        let final_state_commitment = MNT4Fr::rand(rng);
 
-        let vk_commitment = vec![MNT4Fr::rand(rng); 2];
+        let vk_commitment = MNT4Fr::rand(rng);
 
         // Create parameters for our circuit
         let circuit = MergerCircuit::new(
@@ -360,11 +189,11 @@ impl NanoZKP {
             c: G1MNT4::rand(rng).into_affine(),
         };
 
-        let initial_state_commitment = vec![MNT6Fr::rand(rng); 2];
+        let initial_state_commitment = MNT6Fr::rand(rng);
 
-        let final_state_commitment = vec![MNT6Fr::rand(rng); 2];
+        let final_state_commitment = MNT6Fr::rand(rng);
 
-        let vk_commitment = vec![MNT6Fr::rand(rng); 2];
+        let vk_commitment = MNT6Fr::rand(rng);
 
         // Create parameters for our circuit
         let circuit = MergerWrapperCircuit::new(

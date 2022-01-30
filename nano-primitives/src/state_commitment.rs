@@ -17,8 +17,8 @@ use crate::{pk_tree_construct, serialize_fq_mnt6, serialize_g1_mnt6};
 /// block number, the header hash and the Merkle tree root and feed it to the Poseidon hash function.
 /// Lastly we serialize the output and convert it to bytes. This provides an efficient way of
 /// compressing the state and representing it across different curves.
-/// Note that the first 7 bits of the resulting vector will be padding since the original commitment
-/// gadget only returns 753 bits.
+/// Note that we discard the first byte of the resulting since the original commitment
+/// gadget only returns 752 bits.
 pub fn state_commitment(
     block_number: u32,
     header_hash: [u8; 32],
@@ -38,7 +38,7 @@ pub fn state_commitment(
 
     // Construct the Merkle tree over the public keys.
     let root_bytes = pk_tree_construct(public_keys);
-    debug_assert_eq!(root_bytes.len(), 96);
+    debug_assert_eq!(root_bytes.len(), 95);
 
     // Create the second field element.
     let elem_2 = Fq::from_repr(big_int_from_bytes_be(&mut &root_bytes[..])).unwrap();
@@ -49,5 +49,5 @@ pub fn state_commitment(
     // Serialize the hash.
     let bytes = serialize_fq_mnt6(&hash);
 
-    Vec::from(bytes.as_ref())
+    bytes[1..].to_vec()
 }

@@ -5,11 +5,11 @@ use ark_serialize::SerializationError;
 use std::io;
 use thiserror::Error;
 
-#[cfg(feature = "prover")]
-mod prove;
+//#[cfg(feature = "prover")]
+//mod prove;
 #[cfg(feature = "prover")]
 mod setup;
-mod verify;
+//mod verify;
 
 /// This the main struct for the nano-zkp crate. It provides methods to setup (create the
 /// proving and verifying keys), create proofs and verify proofs for the nano sync circuit.

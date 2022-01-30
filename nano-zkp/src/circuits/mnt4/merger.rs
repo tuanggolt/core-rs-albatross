@@ -1,3 +1,4 @@
+use ark_crypto_primitives::crh::poseidon::constraints::CRHParametersVar;
 use ark_crypto_primitives::snark::BooleanInputVar;
 use ark_crypto_primitives::SNARKGadget;
 use ark_groth16::constraints::{Groth16VerifierGadget, ProofVar, VerifyingKeyVar};
@@ -8,9 +9,10 @@ use ark_mnt6_753::{Fq, MNT6_753};
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use nimiq_bls::pedersen::pedersen_generators;
+use nimiq_nano_primitives::mnt6::poseidon_mnt6_t9_parameters;
 
 use crate::gadgets::mnt4::VKCommitmentGadget;
-use crate::utils::{prepare_inputs, unpack_inputs};
+use crate::utils::unpack_inputs;
 
 /// This is the merger circuit. It takes as inputs an initial state commitment, a final state commitment
 /// and a verifying key and it produces a proof that there exist two valid SNARK proofs that transform
@@ -51,9 +53,9 @@ pub struct MergerCircuit {
     // field elements. Both of the curves that we use have a modulus of 753 bits and a capacity
     // of 752 bits. So, the first 752 bits (in little-endian) of each field element is data, and the
     // last bit is always set to zero.
-    initial_state_commitment: Vec<Fq>,
-    final_state_commitment: Vec<Fq>,
-    vk_commitment: Vec<Fq>,
+    initial_state_commitment: Fq,
+    final_state_commitment: Fq,
+    vk_commitment: Fq,
 }
 
 impl MergerCircuit {
@@ -64,9 +66,9 @@ impl MergerCircuit {
         vk_merger_wrapper: VerifyingKey<MNT6_753>,
         intermediate_state_commitment: Vec<bool>,
         genesis_flag: bool,
-        initial_state_commitment: Vec<Fq>,
-        final_state_commitment: Vec<Fq>,
-        vk_commitment: Vec<Fq>,
+        initial_state_commitment: Fq,
+        final_state_commitment: Fq,
+        vk_commitment: Fq,
     ) -> Self {
         Self {
             vk_macro_block_wrapper,
@@ -86,8 +88,9 @@ impl ConstraintSynthesizer<MNT4Fr> for MergerCircuit {
     /// This function generates the constraints for the circuit.
     fn generate_constraints(self, cs: ConstraintSystemRef<MNT4Fr>) -> Result<(), SynthesisError> {
         // Allocate all the constants.
-        let pedersen_generators_var =
-            Vec::<G1Var>::new_constant(cs.clone(), pedersen_generators(19))?;
+        let poseidon_params_8_var =
+            CRHParametersVar::<MNT4Fr>::new_constant(cs.clone(), poseidon_mnt6_t9_parameters())
+                .unwrap();
 
         let vk_macro_block_wrapper_var = VerifyingKeyVar::<MNT6_753, PairingVar>::new_constant(
             cs.clone(),
@@ -119,27 +122,24 @@ impl ConstraintSynthesizer<MNT4Fr> for MergerCircuit {
 
         // Allocate all the inputs.
         let initial_state_commitment_var =
-            Vec::<FqVar>::new_input(cs.clone(), || Ok(&self.initial_state_commitment[..]))?;
+            FqVar::new_input(cs.clone(), || Ok(&self.initial_state_commitment))?;
 
         let final_state_commitment_var =
-            Vec::<FqVar>::new_input(cs.clone(), || Ok(&self.final_state_commitment[..]))?;
+            FqVar::new_input(cs.clone(), || Ok(&self.final_state_commitment))?;
 
-        let vk_commitment_var =
-            Vec::<FqVar>::new_input(cs.clone(), || Ok(&self.vk_commitment[..]))?;
+        let vk_commitment_var = FqVar::new_input(cs.clone(), || Ok(&self.vk_commitment))?;
 
-        // Unpack the inputs by converting them from field elements to bits and truncating appropriately.
-        let initial_state_commitment_bits =
-            unpack_inputs(initial_state_commitment_var)?[..760].to_vec();
+        // Unpack the inputs by converting them from field elements to bits.
+        let initial_state_commitment_bits = unpack_inputs(initial_state_commitment_var)?;
 
-        let final_state_commitment_bits =
-            unpack_inputs(final_state_commitment_var)?[..760].to_vec();
+        let final_state_commitment_bits = unpack_inputs(final_state_commitment_var)?;
 
-        let vk_commitment_bits = unpack_inputs(vk_commitment_var)?[..760].to_vec();
+        let vk_commitment_bits = unpack_inputs(vk_commitment_var)?;
 
         // Verify equality for vk commitment. It just checks that the private input is correct by
         // committing to it and then comparing the result with the vk commitment given as a public input.
         let reference_commitment =
-            VKCommitmentGadget::evaluate(cs, &vk_merger_wrapper_var, &pedersen_generators_var)?;
+            VKCommitmentGadget::evaluate(&vk_merger_wrapper_var, &poseidon_params_8_var)?;
 
         vk_commitment_bits.enforce_equal(&reference_commitment)?;
 
@@ -152,13 +152,11 @@ impl ConstraintSynthesizer<MNT4Fr> for MergerCircuit {
         // Verify the ZK proof for the Merger Wrapper circuit. If the genesis flag is set to false,
         // it enforces the verification. If it is set to true, it doesn't. This is necessary for
         // the first epoch, for the first merger circuit.
-        let mut proof_inputs = prepare_inputs(initial_state_commitment_bits);
-
-        proof_inputs.append(&mut prepare_inputs(
+        let proof_inputs = vec![
+            initial_state_commitment_bits,
             intermediate_state_commitment_bits.clone(),
-        ));
-
-        proof_inputs.append(&mut prepare_inputs(vk_commitment_bits));
+            vk_commitment_bits,
+        ];
 
         let input_var = BooleanInputVar::new(proof_inputs);
 
@@ -170,9 +168,10 @@ impl ConstraintSynthesizer<MNT4Fr> for MergerCircuit {
         .enforce_equal(&genesis_flag_var.not())?;
 
         // Verify the ZK proof for the Macro Block Wrapper circuit.
-        let mut proof_inputs = prepare_inputs(intermediate_state_commitment_bits);
-
-        proof_inputs.append(&mut prepare_inputs(final_state_commitment_bits));
+        let proof_inputs = vec![
+            intermediate_state_commitment_bits,
+            final_state_commitment_bits,
+        ];
 
         let input_var = BooleanInputVar::new(proof_inputs);
 

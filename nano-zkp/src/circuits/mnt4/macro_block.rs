@@ -9,8 +9,9 @@ use ark_mnt6_753::{Fq, G1Projective, MNT6_753};
 use ark_r1cs_std::prelude::{
     AllocVar, Boolean, CondSelectGadget, CurveVar, EqGadget, FieldVar, ToBitsGadget, UInt32,
 };
-use ark_r1cs_std::ToConstraintFieldGadget;
+use ark_r1cs_std::{R1CSVar, ToConstraintFieldGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_std::Zero;
 use nimiq_bls::pedersen::pedersen_generators;
 use nimiq_nano_primitives::mnt6::{poseidon_mnt6_t3_parameters, poseidon_mnt6_t9_parameters};
 use nimiq_nano_primitives::MacroBlock;
@@ -68,15 +69,13 @@ impl ConstraintSynthesizer<MNT4Fr> for MacroBlockCircuit {
         // Allocate all the constants.
         let epoch_length_var = UInt32::<MNT4Fr>::new_constant(cs.clone(), EPOCH_LENGTH)?;
 
-        let poseidon_params_2_var = CRHParametersVar::<MNT4Fr>::new_witness(cs.clone(), || {
-            Ok(poseidon_mnt6_t3_parameters())
-        })
-        .unwrap();
+        let poseidon_params_2_var =
+            CRHParametersVar::<MNT4Fr>::new_constant(cs.clone(), poseidon_mnt6_t3_parameters())
+                .unwrap();
 
-        let poseidon_params_8_var = CRHParametersVar::<MNT4Fr>::new_witness(cs.clone(), || {
-            Ok(poseidon_mnt6_t9_parameters())
-        })
-        .unwrap();
+        let poseidon_params_8_var =
+            CRHParametersVar::<MNT4Fr>::new_constant(cs.clone(), poseidon_mnt6_t9_parameters())
+                .unwrap();
 
         // Allocate all the witnesses.
         let initial_pks_var = Vec::<G1Var>::new_witness(cs.clone(), || Ok(&self.initial_pks[..]))?;
@@ -98,18 +97,16 @@ impl ConstraintSynthesizer<MNT4Fr> for MacroBlockCircuit {
 
         // ------------------------- Process the inputs -------------------------------
 
-        // Unpack the inputs by converting them from field elements to bits and truncating appropriately.
-        let initial_state_commitment_bits =
-            unpack_inputs(initial_state_commitment_var)?[..752].to_vec();
+        // Unpack the inputs by converting them from field elements to bits.
+        let initial_state_commitment_bits = unpack_inputs(initial_state_commitment_var)?;
 
-        let final_state_commitment_bits =
-            unpack_inputs(final_state_commitment_var)?[..752].to_vec();
+        let final_state_commitment_bits = unpack_inputs(final_state_commitment_var)?;
 
         // --------- Calculate the aggregate public key and the public key hash -------------
 
         // Initialize the field elements vector and the aggregate public key.
         let mut elems = vec![];
-        let mut agg_pk = G1Var::zero();
+        let mut agg_pk = G1Var::new_constant(cs.clone(), G1Projective::zero())?;
 
         for (pk, included) in initial_pks_var.iter().zip(block_var.signer_bitmap.iter()) {
             // Calculate a new sum that includes the next public key.
@@ -141,9 +138,6 @@ impl ConstraintSynthesizer<MNT4Fr> for MacroBlockCircuit {
             &poseidon_params_2_var,
         )?;
 
-        // We discard the last bit since input state commitment only contains 752 bits.
-        reference_commitment.pop();
-
         initial_state_commitment_bits.enforce_equal(&reference_commitment)?;
 
         // Verifying equality for final state commitment. It just checks that the final block number,
@@ -155,9 +149,6 @@ impl ConstraintSynthesizer<MNT4Fr> for MacroBlockCircuit {
             &block_var.pk_hash,
             &poseidon_params_2_var,
         )?;
-
-        // We discard the last bit since input state commitment only contains 752 bits.
-        reference_commitment.pop();
 
         final_state_commitment_bits.enforce_equal(&reference_commitment)?;
 

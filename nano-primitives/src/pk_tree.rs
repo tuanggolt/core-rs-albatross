@@ -20,7 +20,7 @@ pub const PK_TREE_BREADTH: usize = 2_usize.pow(PK_TREE_DEPTH as u32);
 #[allow(unreachable_code, unused_variables)]
 pub fn pk_tree_construct(public_keys: Vec<G1Projective>) -> Vec<u8> {
     // FIXME This computation is too slow ATM. Disable it for the time being.
-    vec![0u8; 96]
+    vec![0u8; 95]
 
     // TODO: Needs to be updated to Poseidon hash.
     // // Checking that the number of public keys is equal to the number of validator slots.

@@ -8,7 +8,7 @@ use ark_mnt6_753::Fr as MNT6Fr;
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
-use crate::utils::{prepare_inputs, unpack_inputs};
+use crate::utils::unpack_inputs;
 
 /// This is the macro block wrapper circuit. It takes as inputs an initial state commitment and a
 /// final state commitment and it produces a proof that there exists a valid SNARK proof that transforms
@@ -31,16 +31,16 @@ pub struct MacroBlockWrapperCircuit {
     // field elements. Both of the curves that we use have a modulus of 753 bits and a capacity
     // of 752 bits. So, the first 752 bits (in little-endian) of each field element is data, and the
     // last bit is always set to zero.
-    initial_state_commitment: Vec<Fq>,
-    final_state_commitment: Vec<Fq>,
+    initial_state_commitment: Fq,
+    final_state_commitment: Fq,
 }
 
 impl MacroBlockWrapperCircuit {
     pub fn new(
         vk_macro_block: VerifyingKey<MNT4_753>,
         proof: Proof<MNT4_753>,
-        initial_state_commitment: Vec<Fq>,
-        final_state_commitment: Vec<Fq>,
+        initial_state_commitment: Fq,
+        final_state_commitment: Fq,
     ) -> Self {
         Self {
             vk_macro_block,
@@ -66,22 +66,17 @@ impl ConstraintSynthesizer<MNT6Fr> for MacroBlockWrapperCircuit {
 
         // Allocate all the inputs.
         let initial_state_commitment_var =
-            Vec::<FqVar>::new_input(cs.clone(), || Ok(&self.initial_state_commitment[..]))?;
+            FqVar::new_input(cs.clone(), || Ok(&self.initial_state_commitment))?;
 
-        let final_state_commitment_var =
-            Vec::<FqVar>::new_input(cs, || Ok(&self.final_state_commitment[..]))?;
+        let final_state_commitment_var = FqVar::new_input(cs, || Ok(&self.final_state_commitment))?;
 
-        // Unpack the inputs by converting them from field elements to bits and truncating appropriately.
-        let initial_state_commitment_bits =
-            unpack_inputs(initial_state_commitment_var)?[..760].to_vec();
+        // Unpack the inputs by converting them from field elements to bits.
+        let initial_state_commitment_bits = unpack_inputs(initial_state_commitment_var)?;
 
-        let final_state_commitment_bits =
-            unpack_inputs(final_state_commitment_var)?[..760].to_vec();
+        let final_state_commitment_bits = unpack_inputs(final_state_commitment_var)?;
 
         // Verify the ZK proof.
-        let mut proof_inputs = prepare_inputs(initial_state_commitment_bits);
-
-        proof_inputs.append(&mut prepare_inputs(final_state_commitment_bits));
+        let proof_inputs = vec![initial_state_commitment_bits, final_state_commitment_bits];
 
         let input_var = BooleanInputVar::new(proof_inputs);
 

@@ -78,13 +78,13 @@ impl HashToCurve {
         // Separate the hash bits into coordinates.
         let y_bit = &hash_bits[0];
 
-        let mut c0_bits = vec![Boolean::constant(false); 16];
+        let mut c0_bits = Vec::<Boolean<MNT4Fr>>::new_constant(cs.clone(), vec![false; 16])?;
         c0_bits.extend_from_slice(&hash_bits[2 * 8..96 * 8]);
 
-        let mut c1_bits = vec![Boolean::constant(false); 16];
+        let mut c1_bits = Vec::<Boolean<MNT4Fr>>::new_constant(cs.clone(), vec![false; 16])?;
         c1_bits.extend_from_slice(&hash_bits[(96 + 2) * 8..192 * 8]);
 
-        let mut c2_bits = vec![Boolean::constant(false); 16];
+        let mut c2_bits = Vec::<Boolean<MNT4Fr>>::new_constant(cs.clone(), vec![false; 16])?;
         c2_bits.extend_from_slice(&hash_bits[(192 + 2) * 8..]);
 
         // Calculate the increment nonce and the resulting G1 hash point.

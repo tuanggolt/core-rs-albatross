@@ -2,7 +2,7 @@
 //! can manipulate elliptic curve points on the  MNT6-753 curve.
 
 pub use macro_block::MacroBlockCircuit;
-//pub use merger::MergerCircuit;
+pub use merger::MergerCircuit;
 
 pub mod macro_block;
-//pub mod merger;
+pub mod merger;
