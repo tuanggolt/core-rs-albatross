@@ -220,10 +220,10 @@ fi
 echo "Number of validators: $MAX_VALIDATORS"
 echo "Number of simultaneous restarts: $vkill"
 
-if [ $MAX_VALIDATORS -lt 4 ] ; then
-    echo 'min number of validators is 4'
-    exit 1
-fi
+#if [ $MAX_VALIDATORS -lt 4 ] ; then
+#    echo 'min number of validators is 4'
+#    exit 1
+#fi
 
 i=1
 while  [ $i -le $MAX_VALIDATORS ]
@@ -248,7 +248,7 @@ echo "Done."
 # Launch the seed node
 echo "Starting seed node..."
 mkdir -p temp-state/dev/seed
-$cargo --bin nimiq-client -- -c $configdir/seed/client.toml &>> $logsdir/Seed.log &
+#$cargo --bin nimiq-client -- -c $configdir/seed/client.toml &>> $logsdir/Seed.log &
 spids+=($!)
 sleep 3
 echo "Done."
@@ -258,25 +258,25 @@ echo "Starting validators..."
 for validator in ${validators[@]}; do
     echo "    Starting Validator: $validator"
     mkdir -p temp-state/dev/$validator
-    $cargo --bin nimiq-client -- -c $configdir/validator$validator/client.toml &>> $logsdir/Validator$validator.log &
+    #$cargo --bin nimiq-client -- -c $configdir/validator$validator/client.toml &>> $logsdir/Validator$validator.log &
     vpids+=($!)
     sleep 1
 done
 echo "Done."
 
 # Let the validators produce blocks for 30 seconds
-sleep 30
+sleep 3
 
 # Launch the spammer
 if [ "$SPAMMER" = true ] ; then
     echo "Starting spammer..."
     mkdir -p temp-state/dev/spammer
-    $cargo --bin nimiq-spammer -- -t $tpb -c $configdir/spammer/client.toml &>> $logsdir/Spammer.log &
+    #$cargo --bin nimiq-spammer -- -t $tpb -c $configdir/spammer/client.toml &>> $logsdir/Spammer.log &
     spids+=($!)
     sleep 1
     echo "Done."
 fi
-
+exit 0
 old_block_number=0
 restarts_count=0
 

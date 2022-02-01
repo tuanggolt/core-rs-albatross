@@ -59,7 +59,7 @@ impl Default for SyncMode {
 pub struct ConsensusConfig {
     #[builder(default)]
     pub sync_mode: SyncMode,
-    #[builder(default = "3")]
+    #[builder(default = "0")]
     pub min_peers: usize,
 }
 
