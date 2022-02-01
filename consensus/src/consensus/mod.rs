@@ -76,7 +76,7 @@ pub struct Consensus<N: Network> {
 
 impl<N: Network> Consensus<N> {
     /// Minimum number of peers for consensus to be established.
-    const MIN_PEERS_ESTABLISHED: usize = 3;
+    const MIN_PEERS_ESTABLISHED: usize = 0;
 
     /// Minimum number of block announcements extending the chain for consensus to be established.
     const MIN_BLOCKS_ESTABLISHED: usize = 5;
