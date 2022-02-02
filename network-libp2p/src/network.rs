@@ -488,14 +488,30 @@ impl Network {
                                 }
 
                                 let topic = message.topic.clone();
-                                if let Err(e) =
-                                    output.try_send((message, message_id, propagation_source))
-                                {
+                                if let Err(e) = output.try_send((
+                                    message,
+                                    message_id.clone(),
+                                    propagation_source,
+                                )) {
                                     tracing::error!(
                                         "Failed to dispatch gossipsub '{}' message: {:?}",
                                         topic.as_str(),
                                         e
-                                    )
+                                    );
+                                    // Since we could not deliver the message to the application,
+                                    // mark the message as ignore to remove it from the message cache
+                                    // as libp2p was expecting a validation result
+                                    if *validate {
+                                        swarm
+                                            .behaviour_mut()
+                                            .gossipsub
+                                            .report_message_validation_result(
+                                                &message_id,
+                                                &propagation_source,
+                                                MessageAcceptance::Ignore,
+                                            )
+                                            .ok();
+                                    }
                                 }
                             } else {
                                 tracing::warn!(topic = ?message.topic, "unknown topic hash");
