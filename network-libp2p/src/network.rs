@@ -919,7 +919,13 @@ impl NetworkInterface for Network {
             })
             .await?;
 
-        let _message_id = output_rx.await??;
+        let message_id = output_rx.await??;
+
+        log::debug!(
+            "Message ID {:?} published by peer ID {:?}",
+            message_id,
+            self.local_peer_id
+        );
 
         Ok(())
     }
