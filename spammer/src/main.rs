@@ -27,6 +27,71 @@ use nimiq_primitives::coin::Coin;
 use nimiq_primitives::networks::NetworkId;
 use nimiq_transaction::Transaction;
 use nimiq_transaction_builder::TransactionBuilder;
+use warp::Filter;
+use warp::Rejection;
+use warp::Reply;
+#[macro_use]
+extern crate lazy_static;
+
+use prometheus::{
+    HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge, Opts, Registry,
+};
+
+lazy_static! {
+    pub static ref REGISTRY: Registry = Registry::new();
+    pub static ref BLOCK_NUMBER: IntCounter =
+        IntCounter::new("block_number", "Block Number").expect("metric can be created");
+    pub static ref BLOCK_TIME: IntGauge =
+        IntGauge::new("block_time", "Block Time").expect("metric can be created");
+    pub static ref TPS: IntGauge = IntGauge::new("tps", "TPS").expect("metric can be created");
+}
+
+fn register_custom_metrics() {
+    REGISTRY
+        .register(Box::new(BLOCK_NUMBER.clone()))
+        .expect("collector can be registered");
+
+    REGISTRY
+        .register(Box::new(BLOCK_TIME.clone()))
+        .expect("collector can be registered");
+    REGISTRY
+        .register(Box::new(TPS.clone()))
+        .expect("collector can be registered");
+}
+
+async fn metrics_handler() -> Result<impl Reply, Rejection> {
+    use prometheus::Encoder;
+    let encoder = prometheus::TextEncoder::new();
+
+    let mut buffer = Vec::new();
+    if let Err(e) = encoder.encode(&REGISTRY.gather(), &mut buffer) {
+        eprintln!("could not encode custom metrics: {}", e);
+    };
+    let mut res = match String::from_utf8(buffer.clone()) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("custom metrics could not be from_utf8'd: {}", e);
+            String::default()
+        }
+    };
+    buffer.clear();
+
+    let mut buffer = Vec::new();
+    if let Err(e) = encoder.encode(&prometheus::gather(), &mut buffer) {
+        eprintln!("could not encode prometheus metrics: {}", e);
+    };
+    let res_custom = match String::from_utf8(buffer.clone()) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("prometheus metrics could not be from_utf8'd: {}", e);
+            String::default()
+        }
+    };
+    buffer.clear();
+
+    res.push_str(&res_custom);
+    Ok(res)
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab")]
@@ -73,6 +138,16 @@ const DEV_KEY: &str = "1ef7aad365c195462ed04c275d47189d5362bbfe36b5e93ce7ba2f3ad
 async fn main_inner() -> Result<(), Error> {
     // Initialize deadlock detection
     initialize_deadlock_detection();
+
+    //  Register metrics collection for prometheus
+    register_custom_metrics();
+
+    let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+
+    println!("Started on port 8080");
+    tokio::task::spawn(warp::serve(metrics_route).run(([0, 0, 0, 0], 8080)));
+
+    println!("debug");
 
     // Parse command line.
     let spammer_command_line = SpammerCommandLine::from_args();
@@ -207,6 +282,8 @@ async fn main_inner() -> Result<(), Error> {
                 let tx_count = block.transactions().map(|txs| txs.len()).unwrap_or(0);
                 let mempool_count = mempool.num_transactions();
 
+                BLOCK_NUMBER.inc();
+
                 log::info!(
                     "Blockchain extended to #{}.{}",
                     block.block_number(),
@@ -253,6 +330,9 @@ async fn main_inner() -> Result<(), Error> {
                     log::info!("\t- block time: {:?}", av_block_time);
                     log::info!("\t- tx per block: {:?}", av_tx);
                     log::info!("\t- tx per second: {:?}", tps);
+
+                    BLOCK_TIME.set(av_block_time.as_millis().try_into().unwrap());
+                    TPS.set(tps as i64);
 
                     tx_count_total -= oldest_block.tx_count;
                     if oldest_block.is_micro {
@@ -305,12 +385,22 @@ fn generate_transactions(
     let mut rng = thread_rng();
     for _ in 0..count {
         let mut bytes = [0u8; 20];
-        rng.fill_bytes(&mut bytes);
+        //bytes[19] = (rng.next_u32() & 0xff) as u8;
+        //bytes[18] = (rng.next_u32() & 0xff) as u8;
+        //bytes[17] = (rng.next_u32() & 0x0f) as u8;
+        //bytes[16] = (rng.next_u32() & 0xff) as u8;
+
+        // random recipient
+        //rng.fill_bytes(&mut bytes);
         let recipient = Address::from(bytes);
 
-        let tx = TransactionBuilder::new_basic(
+        let mut data = [0u8; 20];
+        rng.fill_bytes(&mut data);
+
+        let tx = TransactionBuilder::new_basic_with_data(
             key_pair,
             recipient,
+            Vec::from(data),
             Coin::from_u64_unchecked(1),
             Coin::from_u64_unchecked(200),
             start_height,
