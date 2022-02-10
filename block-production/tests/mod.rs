@@ -101,7 +101,7 @@ const STAKER_ADDRESS: &str = "NQ20TSB0DFSMUH9C15GQGAGJTTE4D3MA859E";
 
 const VOLATILE_ENV: bool = false;
 
-const NUM_TRANSACTIONS: u64 = 500;
+const NUM_TRANSACTIONS: u128 = 500;
 
 pub fn generate_transactions(
     key_pair: &KeyPair,
@@ -186,6 +186,11 @@ pub fn fill_micro_blocks_with_txns(
         );
         BLOCK_TIME.set(duration.as_millis().try_into().unwrap());
         BLOCK_NUMBER.set(i.into());
+        TPS.set(
+            (NUM_TRANSACTIONS * 1000 / duration.as_millis())
+                .try_into()
+                .unwrap(),
+        );
     }
 
     assert_eq!(blockchain.read().block_number(), macro_block_number - 1);

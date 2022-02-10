@@ -87,17 +87,17 @@ impl Blockchain {
         // Check that the current block timestamp less the node's current time is less than or equal
         // to the allowed maximum drift. Basically, we check that the block isn't from the future.
         // Both times are given in Unix time standard in millisecond precision.
-        let timestamp_diff = header.timestamp().saturating_sub(blockchain.now());
-        if timestamp_diff > policy::TIMESTAMP_MAX_DRIFT {
-            warn!(
-                "Rejecting block {} - block timestamp {} exceeds allowed maximum drift ({} > {})",
-                header,
-                header.timestamp(),
-                timestamp_diff,
-                policy::TIMESTAMP_MAX_DRIFT
-            );
-            return Err(PushError::InvalidBlock(BlockError::FromTheFuture));
-        }
+        //let timestamp_diff = header.timestamp().saturating_sub(blockchain.now());
+        //if timestamp_diff > policy::TIMESTAMP_MAX_DRIFT {
+        //    warn!(
+        //        "Rejecting block {} - block timestamp {} exceeds allowed maximum drift ({} > {})",
+        //        header,
+        //        header.timestamp(),
+        //        timestamp_diff,
+        //        policy::TIMESTAMP_MAX_DRIFT
+        //    );
+        //    return Err(PushError::InvalidBlock(BlockError::FromTheFuture));
+        //}
 
         // Check if the seed was signed by the intended producer.
         if check_seed {
