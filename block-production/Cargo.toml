@@ -44,6 +44,10 @@ nimiq-transaction-builder = { path = "../transaction-builder" }
 nimiq-keys = { path = "../keys" }
 tempdir = "0.3"
 rand = "0.8"
+prometheus = { version = "0.9", features = ["process"] }
+lazy_static = "1.4"
+warp = "0.3.2"
+tokio = { version = "1.16", features = ["rt-multi-thread", "time", "tracing"] }
 [features]
 default = []
 test-utils = []
