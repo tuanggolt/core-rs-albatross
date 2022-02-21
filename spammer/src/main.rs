@@ -366,15 +366,15 @@ async fn spam(
         let txs = generate_transactions(&key_pair, number, net_id, count);
 
         for tx in txs {
-            let consensus1 = consensus.clone();
+            //let consensus1 = consensus.clone();
             let mp = std::sync::Arc::clone(&mempool);
             tokio::spawn(async move {
                 if let Err(e) = mp.add_transaction(tx.clone()).await {
                     log::warn!("Mempool rejected transaction: {:?} - {:#?}", e, tx);
                 }
-                if let Err(e) = consensus1.send_transaction(tx).await {
-                    log::warn!("Failed to send transaction: {:?}", e);
-                }
+                //if let Err(e) = consensus1.send_transaction(tx).await {
+                //    log::warn!("Failed to send transaction: {:?}", e);
+                //}
             });
         }
     })
