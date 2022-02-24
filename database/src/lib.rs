@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 
-use std::borrow::Cow;
 use std::io;
 use std::ops::Deref;
 
@@ -12,7 +11,8 @@ pub use crate::traits::{AsDatabaseBytes, FromDatabaseValue, IntoDatabaseValue};
 
 #[macro_use]
 pub mod cursor;
-pub mod lmdb;
+//pub mod lmdb;
+pub mod rocksdb;
 pub mod traits;
 pub mod volatile;
 
@@ -35,7 +35,7 @@ bitflags! {
 #[derive(Clone, Debug)]
 pub enum Environment {
     Volatile(volatile::VolatileEnvironment),
-    Persistent(lmdb::LmdbEnvironment),
+    Persistent(rocksdb::RocksDBEnvironment),
 }
 
 impl Environment {
@@ -72,7 +72,7 @@ impl Environment {
 #[derive(Debug)]
 pub enum Database {
     Volatile(volatile::VolatileDatabase),
-    Persistent(lmdb::LmdbDatabase),
+    Persistent(rocksdb::RocksDatabase),
 }
 
 impl Database {
@@ -83,7 +83,7 @@ impl Database {
         None
     }
 
-    fn persistent(&self) -> Option<&lmdb::LmdbDatabase> {
+    fn persistent(&self) -> Option<&rocksdb::RocksDatabase> {
         match self {
             Database::Persistent(ref db) => Some(db),
             Database::Volatile(ref db) => Some(db.as_lmdb()),
@@ -92,14 +92,14 @@ impl Database {
 }
 
 #[derive(Debug)]
-pub enum Transaction<'env> {
-    VolatileRead(volatile::VolatileReadTransaction<'env>),
-    VolatileWrite(volatile::VolatileWriteTransaction<'env>),
-    PersistentRead(lmdb::LmdbReadTransaction<'env>),
-    PersistentWrite(lmdb::LmdbWriteTransaction<'env>),
+pub enum Transaction {
+    VolatileRead(volatile::VolatileReadTransaction),
+    VolatileWrite(volatile::VolatileWriteTransaction),
+    PersistentRead(rocksdb::RocksDBReadTransaction),
+    PersistentWrite(rocksdb::RocksDBWriteTransaction),
 }
 
-impl<'env> Transaction<'env> {
+impl<'env> Transaction {
     pub fn get<K, V>(&self, db: &Database, key: &K) -> Option<V>
     where
         K: AsDatabaseBytes + ?Sized,
@@ -113,7 +113,7 @@ impl<'env> Transaction<'env> {
         }
     }
 
-    pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database) -> Cursor<'txn, 'db> {
+    pub fn cursor<'db>(&self, db: &'db Database) -> Cursor<'db> {
         match *self {
             Transaction::VolatileRead(ref txn) => Cursor::VolatileCursor(txn.cursor(db)),
             Transaction::VolatileWrite(ref txn) => Cursor::VolatileCursor(txn.cursor(db)),
@@ -124,16 +124,16 @@ impl<'env> Transaction<'env> {
 }
 
 #[derive(Debug)]
-pub struct ReadTransaction<'env>(Transaction<'env>);
+pub struct ReadTransaction(Transaction);
 
-impl<'env> ReadTransaction<'env> {
+impl<'env> ReadTransaction {
     pub fn new(env: &'env Environment) -> Self {
         match *env {
             Environment::Volatile(ref env) => ReadTransaction(Transaction::VolatileRead(
                 volatile::VolatileReadTransaction::new(env),
             )),
             Environment::Persistent(ref env) => ReadTransaction(Transaction::PersistentRead(
-                lmdb::LmdbReadTransaction::new(env),
+                rocksdb::RocksDBReadTransaction::new(env),
             )),
         }
     }
@@ -148,30 +148,30 @@ impl<'env> ReadTransaction<'env> {
 
     pub fn close(self) {}
 
-    pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database) -> Cursor<'txn, 'db> {
+    pub fn cursor<'db>(&self, db: &'db Database) -> Cursor<'db> {
         self.0.cursor(db)
     }
 }
 
-impl<'env> Deref for ReadTransaction<'env> {
-    type Target = Transaction<'env>;
+impl<'env> Deref for ReadTransaction {
+    type Target = Transaction;
 
-    fn deref(&self) -> &Transaction<'env> {
+    fn deref(&self) -> &Transaction {
         &self.0
     }
 }
 
 #[derive(Debug)]
-pub struct WriteTransaction<'env>(Transaction<'env>);
+pub struct WriteTransaction(Transaction);
 
-impl<'env> WriteTransaction<'env> {
+impl<'env> WriteTransaction {
     pub fn new(env: &'env Environment) -> Self {
         match *env {
             Environment::Volatile(ref env) => WriteTransaction(Transaction::VolatileWrite(
                 volatile::VolatileWriteTransaction::new(env),
             )),
             Environment::Persistent(ref env) => WriteTransaction(Transaction::PersistentWrite(
-                lmdb::LmdbWriteTransaction::new(env),
+                rocksdb::RocksDBWriteTransaction::new(env),
             )),
         }
     }
@@ -268,11 +268,11 @@ impl<'env> WriteTransaction<'env> {
 
     pub fn abort(self) {}
 
-    pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database) -> Cursor<'txn, 'db> {
+    pub fn cursor<'db>(&self, db: &'db Database) -> Cursor<'db> {
         self.0.cursor(db)
     }
 
-    pub fn write_cursor<'txn, 'db>(&'txn self, db: &'db Database) -> WriteCursor<'txn, 'db> {
+    pub fn write_cursor<'db>(&self, db: &'db Database) -> WriteCursor<'db> {
         match self.0 {
             Transaction::VolatileWrite(ref txn) => {
                 WriteCursor::VolatileCursor(txn.write_cursor(db))
@@ -285,22 +285,22 @@ impl<'env> WriteTransaction<'env> {
     }
 }
 
-impl<'env> Deref for WriteTransaction<'env> {
-    type Target = Transaction<'env>;
+impl<'env> Deref for WriteTransaction {
+    type Target = Transaction;
 
-    fn deref(&self) -> &Transaction<'env> {
+    fn deref(&self) -> &Transaction {
         &self.0
     }
 }
 
-pub enum Cursor<'txn, 'db> {
-    VolatileCursor(volatile::VolatileCursor<'txn, 'db>),
-    PersistentCursor(lmdb::LmdbCursor<'txn, 'db>),
+pub enum Cursor<'txn> {
+    VolatileCursor(volatile::VolatileCursor<'txn>),
+    PersistentCursor(rocksdb::RocksdbCursor<'txn>),
 }
 
-pub enum WriteCursor<'txn, 'db> {
-    VolatileCursor(volatile::VolatileWriteCursor<'txn, 'db>),
-    PersistentCursor(lmdb::LmdbWriteCursor<'txn, 'db>),
+pub enum WriteCursor<'txn> {
+    VolatileCursor(volatile::VolatileWriteCursor<'txn>),
+    PersistentCursor(rocksdb::RocksDBWriteCursor<'txn>),
 }
 
 macro_rules! gen_cursor_match {
@@ -324,7 +324,7 @@ macro_rules! gen_cursor_match {
     };
 }
 
-impl<'txn, 'db> ReadCursor for Cursor<'txn, 'db> {
+impl<'txn, 'db> ReadCursor for Cursor<'txn> {
     fn first<K, V>(&mut self) -> Option<(K, V)>
     where
         K: FromDatabaseValue,
@@ -456,7 +456,7 @@ impl<'txn, 'db> ReadCursor for Cursor<'txn, 'db> {
     }
 }
 
-impl<'txn, 'db> ReadCursor for WriteCursor<'txn, 'db> {
+impl<'txn, 'db> ReadCursor for WriteCursor<'txn> {
     fn first<K, V>(&mut self) -> Option<(K, V)>
     where
         K: FromDatabaseValue,
@@ -588,7 +588,7 @@ impl<'txn, 'db> ReadCursor for WriteCursor<'txn, 'db> {
     }
 }
 
-impl<'txn, 'db> WriteCursorTrait for WriteCursor<'txn, 'db> {
+impl<'txn, 'db> WriteCursorTrait for WriteCursor<'txn> {
     fn remove(&mut self) {
         gen_cursor_match!(self, remove, WriteCursor)
     }

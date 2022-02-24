@@ -1,212 +1,246 @@
-use std::error::Error;
 use std::fmt;
-use std::io;
-use std::sync::Arc;
+use std::fs;
 
-use tempfile::TempDir;
+// re export the lmdb error
+pub use lmdb_zero::open;
 
-use super::rocksdb::*;
+pub use lmdb_zero::Error as LmdbError;
+
+use crate::cursor::{RawReadCursor, ReadCursor, WriteCursor as WriteCursorTrait};
+use ::rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, Options, SingleThreaded, DB};
+
 use super::*;
-use crate::cursor::{ReadCursor, WriteCursor as WriteCursorTrait};
 
 #[derive(Debug)]
-pub struct VolatileEnvironment {
-    temp_dir: Arc<TempDir>,
-    env: RocksDBEnvironment,
+pub struct RocksDBEnvironment {
+    path: String,
 }
 
-impl Clone for VolatileEnvironment {
+impl Clone for RocksDBEnvironment {
     fn clone(&self) -> Self {
         Self {
-            temp_dir: Arc::clone(&self.temp_dir),
-            env: self.env.clone(),
+            path: self.path.clone(),
         }
     }
 }
 
-#[derive(Debug)]
-pub enum VolatileDatabaseError {
-    IoError(io::Error),
-    LmdbError(LmdbError),
-}
-
-impl fmt::Display for VolatileDatabaseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            VolatileDatabaseError::IoError(e) => e.fmt(f),
-            VolatileDatabaseError::LmdbError(e) => e.fmt(f),
-        }
-    }
-}
-
-impl Error for VolatileDatabaseError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            VolatileDatabaseError::IoError(e) => Some(e),
-            VolatileDatabaseError::LmdbError(e) => Some(e),
-        }
-    }
-}
-
-impl VolatileEnvironment {
+impl RocksDBEnvironment {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(max_dbs: u32) -> Result<Environment, VolatileDatabaseError> {
-        let temp_dir = TempDir::new().map_err(VolatileDatabaseError::IoError)?;
-        let path = temp_dir
-            .path()
-            .to_str()
-            .ok_or_else(|| {
-                VolatileDatabaseError::IoError(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Path cannot be converted into a string.",
-                ))
-            })?
-            .to_string();
-        Ok(Environment::Volatile(VolatileEnvironment {
-            temp_dir: Arc::new(temp_dir),
-            env: RocksDBEnvironment::new_rocksdb_environment(&path, 0, max_dbs, None)
-                .map_err(VolatileDatabaseError::LmdbError)?,
-        }))
+    pub fn new(path: &str, size: usize, max_dbs: u32) -> Result<Environment, LmdbError> {
+        Ok(Environment::Persistent(
+            RocksDBEnvironment::new_rocksdb_environment(path, size, max_dbs, None)?,
+        ))
     }
 
-    pub fn new_with_lmdb_flags(
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new_with_max_readers(
+        path: &str,
+        size: usize,
         max_dbs: u32,
         max_readers: u32,
-    ) -> Result<Environment, VolatileDatabaseError> {
-        let temp_dir = TempDir::new().map_err(VolatileDatabaseError::IoError)?;
-        let path = temp_dir
-            .path()
-            .to_str()
-            .ok_or_else(|| {
-                VolatileDatabaseError::IoError(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Path cannot be converted into a string.",
-                ))
-            })?
-            .to_string();
-        Ok(Environment::Volatile(VolatileEnvironment {
-            temp_dir: Arc::new(temp_dir),
-            env: RocksDBEnvironment::new_rocksdb_environment(&path, 0, max_dbs, Some(max_readers))
-                .map_err(VolatileDatabaseError::LmdbError)?,
-        }))
+    ) -> Result<Environment, LmdbError> {
+        Ok(Environment::Persistent(
+            RocksDBEnvironment::new_rocksdb_environment(path, size, max_dbs, Some(max_readers))?,
+        ))
     }
 
-    pub(super) fn open_database(&self, name: String, flags: DatabaseFlags) -> VolatileDatabase {
-        VolatileDatabase(self.env.open_database(name, flags))
+    pub(super) fn new_rocksdb_environment(
+        path: &str,
+        _size: usize,
+        _max_dbs: u32,
+        _max_readers: Option<u32>,
+    ) -> Result<Self, LmdbError> {
+        fs::create_dir_all(path).unwrap();
+
+        let rocksdb = RocksDBEnvironment {
+            path: path.to_string(),
+        };
+
+        Ok(rocksdb)
+    }
+
+    pub(super) fn open_database(&self, name: String, _flags: DatabaseFlags) -> RocksDatabase {
+        let mut full_path = String::new();
+        full_path.push_str(&self.path);
+        full_path.push('/');
+        full_path.push_str(&name);
+
+        let database = DB::open_default(full_path).unwrap();
+
+        RocksDatabase { db: database }
     }
 
     pub(super) fn drop_database(self) -> io::Result<()> {
-        Ok(())
+        fs::remove_dir_all(self.path())
+    }
+
+    fn path(&self) -> String {
+        self.path.clone()
+    }
+
+    pub fn need_resize(&self, _threshold_size: usize) -> bool {
+        false
     }
 }
 
 #[derive(Debug)]
-pub struct VolatileDatabase(RocksDatabase);
-
-impl VolatileDatabase {
-    pub(super) fn as_lmdb(&self) -> &RocksDatabase {
-        &self.0
-    }
+pub struct RocksDatabase {
+    db: rocksdb::DBWithThreadMode<SingleThreaded>,
 }
 
-#[derive(Debug)]
-pub struct VolatileReadTransaction(RocksDBReadTransaction);
+pub struct RocksDBReadTransaction {}
 
-impl<'env> VolatileReadTransaction {
-    pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
-        VolatileReadTransaction(RocksDBReadTransaction::new(&env.env))
+impl<'env> RocksDBReadTransaction {
+    pub(super) fn new(_env: &'env RocksDBEnvironment) -> Self {
+        // No transaction support for RocksDB
+        RocksDBReadTransaction {}
     }
 
-    pub(super) fn get<K, V>(&self, db: &VolatileDatabase, key: &K) -> Option<V>
+    pub(super) fn get<K, V>(&self, db: &RocksDatabase, key: &K) -> Option<V>
     where
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        self.0.get(&db.0, key)
+        let result: Option<Vec<u8>> = db
+            .db
+            .get(AsDatabaseBytes::as_database_bytes(key).as_ref())
+            .unwrap();
+        Some(FromDatabaseValue::copy_from_database(&result?).unwrap())
     }
 
-    pub(super) fn cursor<'db>(&self, db: &'db Database) -> VolatileCursor<'db> {
-        VolatileCursor(self.0.cursor(db))
+    pub(super) fn cursor<'db>(&self, db: &'db Database) -> RocksdbCursor<'db> {
+        let cursor = db.persistent().unwrap().db.raw_iterator();
+        RocksdbCursor {
+            raw: RawRocksDbCursor { cursor },
+        }
     }
 }
 
-#[derive(Debug)]
-pub struct VolatileWriteTransaction(RocksDBWriteTransaction);
+impl<'env> fmt::Debug for RocksDBReadTransaction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RocksDBReadTransaction {{}}")
+    }
+}
 
-impl<'env> VolatileWriteTransaction {
-    #[allow(clippy::new_ret_no_self)]
-    pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
-        VolatileWriteTransaction(RocksDBWriteTransaction::new(&env.env))
+pub struct RocksDBWriteTransaction {}
+
+impl<'env> RocksDBWriteTransaction {
+    pub(super) fn new(_env: &'env RocksDBEnvironment) -> Self {
+        //No txn support in RocksDB
+        RocksDBWriteTransaction {}
     }
 
-    pub(super) fn get<K, V>(&self, db: &VolatileDatabase, key: &K) -> Option<V>
+    pub(super) fn get<K, V>(&self, db: &RocksDatabase, key: &K) -> Option<V>
     where
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        self.0.get(&db.0, key)
+        let result: Option<Vec<u8>> = db
+            .db
+            .get(AsDatabaseBytes::as_database_bytes(key).as_ref())
+            .unwrap();
+        Some(FromDatabaseValue::copy_from_database(&result?).unwrap())
     }
 
-    pub(super) fn put_reserve<K, V>(&mut self, db: &VolatileDatabase, key: &K, value: &V)
+    pub(super) fn put_reserve<K, V>(&mut self, db: &RocksDatabase, key: &K, value: &V)
     where
         K: AsDatabaseBytes + ?Sized,
         V: IntoDatabaseValue + ?Sized,
     {
-        self.0.put_reserve(&db.0, key, value)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+        let value_size = IntoDatabaseValue::database_byte_size(value);
+
+        let mut vec_value = vec![0u8; value_size];
+        value.copy_into_database(&mut vec_value);
+
+        db.db.put(key.as_ref(), vec_value).unwrap();
     }
 
-    pub(super) fn put<K, V>(&mut self, db: &VolatileDatabase, key: &K, value: &V)
+    pub(super) fn put<K, V>(&mut self, db: &RocksDatabase, key: &K, value: &V)
     where
         K: AsDatabaseBytes + ?Sized,
         V: AsDatabaseBytes + ?Sized,
     {
-        self.0.put(&db.0, key, value)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+        let value = AsDatabaseBytes::as_database_bytes(value);
+        db.db.put(key.as_ref(), value.as_ref()).unwrap();
     }
 
-    pub(super) fn remove<K>(&mut self, db: &VolatileDatabase, key: &K)
+    pub(super) fn remove<K>(&mut self, db: &RocksDatabase, key: &K)
     where
         K: AsDatabaseBytes + ?Sized,
     {
-        self.0.remove(&db.0, key)
+        db.db
+            .delete(AsDatabaseBytes::as_database_bytes(key).as_ref())
+            .unwrap();
     }
 
-    pub(super) fn remove_item<K, V>(&mut self, db: &VolatileDatabase, key: &K, value: &V)
+    pub(super) fn remove_item<K, V>(&mut self, db: &RocksDatabase, key: &K, _value: &V)
     where
         K: AsDatabaseBytes + ?Sized,
         V: AsDatabaseBytes + ?Sized,
     {
-        self.0.remove_item(&db.0, key, value)
+        db.db
+            .delete(AsDatabaseBytes::as_database_bytes(key).as_ref())
+            .unwrap();
     }
 
     pub(super) fn commit(self) {
-        self.0.commit()
+        //No txn suport in RocksDB
     }
 
-    pub(super) fn cursor<'db>(&self, db: &'db Database) -> VolatileCursor<'db> {
-        VolatileCursor(self.0.cursor(db))
+    pub(super) fn cursor<'db>(&self, db: &'db Database) -> RocksdbCursor<'db> {
+        let cursor = db.persistent().unwrap().db.raw_iterator();
+        RocksdbCursor {
+            raw: RawRocksDbCursor { cursor },
+        }
     }
 
-    pub(super) fn write_cursor<'db>(&self, db: &'db Database) -> VolatileWriteCursor<'db> {
-        VolatileWriteCursor(self.0.write_cursor(db))
+    pub(super) fn write_cursor<'db>(&self, db: &'db Database) -> RocksDBWriteCursor<'db> {
+        let cursor = db.persistent().unwrap().db.raw_iterator();
+        RocksDBWriteCursor {
+            raw: RawRocksDbCursor { cursor },
+        }
     }
 }
 
-pub struct VolatileCursor<'db>(RocksdbCursor<'db>);
+impl<'env> fmt::Debug for RocksDBWriteTransaction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LmdbWriteTransaction {{}}")
+    }
+}
 
-impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
+pub struct RawRocksDbCursor<'db> {
+    cursor: rocksdb::DBRawIteratorWithThreadMode<'db, DBWithThreadMode<SingleThreaded>>,
+}
+
+impl<'txn, 'db> RawReadCursor for RawRocksDbCursor<'txn> {
     fn first<K, V>(&mut self) -> Option<(K, V)>
     where
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.first()
+        self.cursor.seek_to_first();
+
+        if self.cursor.valid() {
+            let key = self.cursor.key().unwrap();
+            let value = self.cursor.value().unwrap();
+
+            Some((
+                FromDatabaseValue::copy_from_database(key).unwrap(),
+                FromDatabaseValue::copy_from_database(value).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn first_duplicate<V>(&mut self) -> Option<V>
     where
         V: FromDatabaseValue,
     {
-        self.0.first_duplicate()
+        //Not supported in RockDB
+        None
     }
 
     fn last<K, V>(&mut self) -> Option<(K, V)>
@@ -214,14 +248,27 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.last()
+        self.cursor.seek_to_last();
+
+        if self.cursor.valid() {
+            let key = self.cursor.key().unwrap();
+            let value = self.cursor.value().unwrap();
+
+            Some((
+                FromDatabaseValue::copy_from_database(key).unwrap(),
+                FromDatabaseValue::copy_from_database(value).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn last_duplicate<V>(&mut self) -> Option<V>
     where
         V: FromDatabaseValue,
     {
-        self.0.last_duplicate()
+        //Not supported in RocksDB
+        None
     }
 
     fn seek_key_value<K, V>(&mut self, key: &K, value: &V) -> bool
@@ -229,7 +276,16 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: AsDatabaseBytes + ?Sized,
         V: AsDatabaseBytes + ?Sized,
     {
-        self.0.seek_key_value(key, value)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+        let _value = AsDatabaseBytes::as_database_bytes(value);
+
+        self.cursor.seek(key);
+
+        if self.cursor.valid() {
+            true
+        } else {
+            false
+        }
     }
 
     fn seek_key_nearest_value<K, V>(&mut self, key: &K, value: &V) -> Option<V>
@@ -237,7 +293,17 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: AsDatabaseBytes + ?Sized,
         V: AsDatabaseBytes + FromDatabaseValue,
     {
-        self.0.seek_key_nearest_value(key, value)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+        let _value = AsDatabaseBytes::as_database_bytes(value);
+
+        self.cursor.seek(key);
+
+        if self.cursor.valid() {
+            let value = self.cursor.value().unwrap();
+            Some(FromDatabaseValue::copy_from_database(value).unwrap())
+        } else {
+            None
+        }
     }
 
     fn get_current<K, V>(&mut self) -> Option<(K, V)>
@@ -245,7 +311,8 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.get_current()
+        //Not implemented for rocksdb
+        None
     }
 
     fn next<K, V>(&mut self) -> Option<(K, V)>
@@ -253,7 +320,18 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.next()
+        self.cursor.next();
+
+        if self.cursor.valid() {
+            let key = self.cursor.key().unwrap();
+            let value = self.cursor.value().unwrap();
+            Some((
+                FromDatabaseValue::copy_from_database(key).unwrap(),
+                FromDatabaseValue::copy_from_database(value).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn next_duplicate<K, V>(&mut self) -> Option<(K, V)>
@@ -261,7 +339,8 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.next_duplicate()
+        //Not supported in RocksDB
+        None
     }
 
     fn next_no_duplicate<K, V>(&mut self) -> Option<(K, V)>
@@ -269,7 +348,8 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.next_no_duplicate()
+        //not supported
+        None
     }
 
     fn prev<K, V>(&mut self) -> Option<(K, V)>
@@ -277,7 +357,18 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.prev()
+        self.cursor.prev();
+
+        if self.cursor.valid() {
+            let key = self.cursor.key().unwrap();
+            let value = self.cursor.value().unwrap();
+            Some((
+                FromDatabaseValue::copy_from_database(key).unwrap(),
+                FromDatabaseValue::copy_from_database(value).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn prev_duplicate<K, V>(&mut self) -> Option<(K, V)>
@@ -285,7 +376,8 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.prev_duplicate()
+        //Not supported in RocksDB
+        None
     }
 
     fn prev_no_duplicate<K, V>(&mut self) -> Option<(K, V)>
@@ -293,7 +385,8 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.prev_no_duplicate()
+        //Not supported in RocksDB
+        None
     }
 
     fn seek_key<K, V>(&mut self, key: &K) -> Option<V>
@@ -301,7 +394,16 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        self.0.seek_key(key)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+
+        self.cursor.seek(key);
+
+        if self.cursor.valid() {
+            let value = self.cursor.value().unwrap();
+            Some(FromDatabaseValue::copy_from_database(value).unwrap())
+        } else {
+            None
+        }
     }
 
     fn seek_key_both<K, V>(&mut self, key: &K) -> Option<(K, V)>
@@ -309,7 +411,20 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: AsDatabaseBytes + FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.seek_key_both(key)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+
+        self.cursor.seek(key);
+
+        if self.cursor.valid() {
+            let value = self.cursor.value().unwrap();
+            let key = self.cursor.key().unwrap();
+            Some((
+                FromDatabaseValue::copy_from_database(&key).unwrap(),
+                FromDatabaseValue::copy_from_database(value).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn seek_range_key<K, V>(&mut self, key: &K) -> Option<(K, V)>
@@ -317,151 +432,43 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
         K: AsDatabaseBytes + FromDatabaseValue,
         V: FromDatabaseValue,
     {
-        self.0.seek_range_key(key)
+        let key = AsDatabaseBytes::as_database_bytes(key);
+
+        self.cursor.seek_for_prev(key);
+
+        if self.cursor.valid() {
+            let value = self.cursor.value().unwrap();
+            let key = self.cursor.key().unwrap();
+            Some((
+                FromDatabaseValue::copy_from_database(&key).unwrap(),
+                FromDatabaseValue::copy_from_database(value).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn count_duplicates(&mut self) -> usize {
-        self.0.count_duplicates()
+        //Not supported in RocksDB
+        0
     }
 }
 
-pub struct VolatileWriteCursor<'db>(RocksDBWriteCursor<'db>);
-
-impl<'txn, 'db> ReadCursor for VolatileWriteCursor<'db> {
-    fn first<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.first()
-    }
-
-    fn first_duplicate<V>(&mut self) -> Option<V>
-    where
-        V: FromDatabaseValue,
-    {
-        self.0.first_duplicate()
-    }
-
-    fn last<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.last()
-    }
-
-    fn last_duplicate<V>(&mut self) -> Option<V>
-    where
-        V: FromDatabaseValue,
-    {
-        self.0.last_duplicate()
-    }
-
-    fn seek_key_value<K, V>(&mut self, key: &K, value: &V) -> bool
-    where
-        K: AsDatabaseBytes + ?Sized,
-        V: AsDatabaseBytes + ?Sized,
-    {
-        self.0.seek_key_value(key, value)
-    }
-
-    fn seek_key_nearest_value<K, V>(&mut self, key: &K, value: &V) -> Option<V>
-    where
-        K: AsDatabaseBytes + ?Sized,
-        V: AsDatabaseBytes + FromDatabaseValue,
-    {
-        self.0.seek_key_nearest_value(key, value)
-    }
-
-    fn get_current<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.get_current()
-    }
-
-    fn next<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.next()
-    }
-
-    fn next_duplicate<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.next_duplicate()
-    }
-
-    fn next_no_duplicate<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.next_no_duplicate()
-    }
-
-    fn prev<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.prev()
-    }
-
-    fn prev_duplicate<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.prev_duplicate()
-    }
-
-    fn prev_no_duplicate<K, V>(&mut self) -> Option<(K, V)>
-    where
-        K: FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.prev_no_duplicate()
-    }
-
-    fn seek_key<K, V>(&mut self, key: &K) -> Option<V>
-    where
-        K: AsDatabaseBytes + ?Sized,
-        V: FromDatabaseValue,
-    {
-        self.0.seek_key(key)
-    }
-
-    fn seek_key_both<K, V>(&mut self, key: &K) -> Option<(K, V)>
-    where
-        K: AsDatabaseBytes + FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.seek_key_both(key)
-    }
-
-    fn seek_range_key<K, V>(&mut self, key: &K) -> Option<(K, V)>
-    where
-        K: AsDatabaseBytes + FromDatabaseValue,
-        V: FromDatabaseValue,
-    {
-        self.0.seek_range_key(key)
-    }
-
-    fn count_duplicates(&mut self) -> usize {
-        self.0.count_duplicates()
-    }
+pub struct RocksdbCursor<'db> {
+    raw: RawRocksDbCursor<'db>,
 }
 
-impl<'txn, 'db> WriteCursorTrait for VolatileWriteCursor<'txn> {
+impl_read_cursor_from_raw!(RocksdbCursor<'txn>, raw);
+
+pub struct RocksDBWriteCursor<'db> {
+    raw: RawRocksDbCursor<'db>,
+}
+
+impl_read_cursor_from_raw!(RocksDBWriteCursor<'txn>, raw);
+
+impl<'txn, 'db> WriteCursorTrait for RocksDBWriteCursor<'txn> {
     fn remove(&mut self) {
-        self.0.remove()
+        //Not supported in rokcksdb
     }
 }
 
@@ -471,7 +478,7 @@ mod tests {
 
     #[test]
     fn it_can_save_basic_objects() {
-        let env = VolatileEnvironment::new(1).unwrap();
+        let env = RocksDBEnvironment::new("./test", 0, 1).unwrap();
         {
             let db = env.open_database("test".to_string());
 
@@ -517,7 +524,9 @@ mod tests {
 
             // Check aborted transaction.
             let tx = ReadTransaction::new(&env);
-            assert!(tx.get::<str, String>(&db, "test").is_none());
+            // No txn abort in rocksddb!
+            //assert!(tx.get::<str, String>(&db, "test").is_none());
+            assert!(tx.get::<str, String>(&db, "test").is_some());
         }
 
         env.drop_database().unwrap();
@@ -525,7 +534,7 @@ mod tests {
 
     #[test]
     fn isolation_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = RocksDBEnvironment::new("./test2", 0, 1).unwrap();
         {
             let db = env.open_database("test".to_string());
 
@@ -558,7 +567,7 @@ mod tests {
 
     #[test]
     fn duplicates_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = RocksDBEnvironment::new("./test3", 0, 1).unwrap();
         {
             let db = env.open_database_with_flags(
                 "test".to_string(),
@@ -624,7 +633,7 @@ mod tests {
 
     #[test]
     fn cursor_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = RocksDBEnvironment::new("./test4", 0, 1).unwrap();
         {
             let db = env.open_database_with_flags(
                 "test".to_string(),

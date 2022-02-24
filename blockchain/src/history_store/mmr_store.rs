@@ -7,9 +7,9 @@ use nimiq_hash::Blake2bHash;
 use nimiq_mmr::store::Store;
 
 #[derive(Debug)]
-enum Tx<'a, 'env> {
-    Write(&'a mut WriteTransaction<'env>),
-    Read(&'a Transaction<'env>),
+enum Tx<'a> {
+    Write(&'a mut WriteTransaction),
+    Read(&'a Transaction),
 }
 
 /// A store implementation for MMRs based on a single database of LMDB.
@@ -26,18 +26,18 @@ enum Tx<'a, 'env> {
 /// and move the cursor back by one entry (thus being the last node of the previous epoch, if the
 /// epoch has any nodes).
 #[derive(Debug)]
-pub struct MMRStore<'a, 'env> {
+pub struct MMRStore<'a> {
     hist_tree_db: &'a Database,
-    tx: Tx<'a, 'env>,
+    tx: Tx<'a>,
     epoch_number: u32,
     size: usize,
 }
 
-impl<'a, 'env> MMRStore<'a, 'env> {
+impl<'a, 'env> MMRStore<'a> {
     /// Create a read-only store.
     pub fn with_read_transaction(
         hist_tree_db: &'a Database,
-        tx: &'a Transaction<'env>,
+        tx: &'a Transaction,
         epoch_number: u32,
     ) -> Self {
         let size = Self::get_size(hist_tree_db, tx, epoch_number);
@@ -52,7 +52,7 @@ impl<'a, 'env> MMRStore<'a, 'env> {
     /// Create a writable store.
     pub fn with_write_transaction(
         hist_tree_db: &'a Database,
-        tx: &'a mut WriteTransaction<'env>,
+        tx: &'a mut WriteTransaction,
         epoch_number: u32,
     ) -> Self {
         let size = Self::get_size(hist_tree_db, tx, epoch_number);
@@ -119,7 +119,7 @@ fn key_to_index(key: Vec<u8>) -> Option<(u32, usize)> {
     Some((epoch_number, index))
 }
 
-impl<'a, 'env> Store<Blake2bHash> for MMRStore<'a, 'env> {
+impl<'a, 'env> Store<Blake2bHash> for MMRStore<'a> {
     fn push(&mut self, elem: Blake2bHash) {
         if let Tx::Write(ref mut tx) = self.tx {
             let key = index_to_key(self.epoch_number, self.size);

@@ -551,14 +551,14 @@ pub struct LmdbCursor<'txn, 'db> {
     txn: &'txn lmdb_zero::ConstTransaction<'txn>,
 }
 
-impl_read_cursor_from_raw!(LmdbCursor<'txn, 'db>, raw, txn);
+impl_read_cursor_from_raw!(LmdbCursor<'txn, 'db>, raw);
 
 pub struct LmdbWriteCursor<'txn, 'db> {
     raw: RawLmdbCursor<'txn, 'db>,
     txn: &'txn lmdb_zero::WriteTransaction<'txn>,
 }
 
-impl_read_cursor_from_raw!(LmdbWriteCursor<'txn, 'db>, raw, txn);
+impl_read_cursor_from_raw!(LmdbWriteCursor<'txn, 'db>, raw);
 
 impl<'txn, 'db> WriteCursorTrait for LmdbWriteCursor<'txn, 'db> {
     fn remove(&mut self) {
