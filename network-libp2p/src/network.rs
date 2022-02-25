@@ -277,6 +277,7 @@ impl Network {
             loop {
                 tokio::select! {
                     validate_msg = validate_rx.next() => {
+                        log::debug!("Validating message");
                         if let Some(validate_msg) = validate_msg {
                             let topic = validate_msg.topic;
                             let result: Result<bool, PublishError> = swarm
@@ -294,13 +295,17 @@ impl Network {
                                 Err(e) => log::error!("Network error while relaying {} message: {}", topic, e),
                             }
                         }
+                        log::debug!("Finished validating message");
                     },
                     event = swarm.next() => {
+                        log::debug!("About to handle network event");
                         if let Some(event) = event {
                             Self::handle_event(event, &events_tx, &mut swarm, &mut task_state);
                         }
+                        log::debug!("Finished handling network event");
                     },
                     action = action_rx.next() => {
+                        log::debug!("About to perform network action");
                         if let Some(action) = action {
                             Self::perform_action(action, &mut swarm, &mut task_state);
                         }
@@ -308,6 +313,7 @@ impl Network {
                             // `action_rx.next()` will return `None` if all senders (i.e. the `Network` object) are dropped.
                             break;
                         }
+                        log::debug!("Finished performing network action");
                     },
                 };
             }
@@ -322,6 +328,7 @@ impl Network {
         swarm: &mut NimiqSwarm,
         state: &mut TaskState,
     ) {
+        log::debug!("Starting event handler for {:?}", event);
         match event {
             SwarmEvent::ConnectionEstablished {
                 peer_id,
@@ -637,11 +644,14 @@ impl Network {
             }
             _ => {}
         }
+        log::debug!("Finished event handler");
     }
 
     fn perform_action(action: NetworkAction, swarm: &mut NimiqSwarm, state: &mut TaskState) {
         // FIXME implement compact debug format for NetworkAction
         // tracing::trace!(action = ?action, "performing action");
+
+        log::debug!("Starting network action {:?}", action);
 
         match action {
             NetworkAction::Dial { peer_id, output } => {
@@ -811,6 +821,7 @@ impl Network {
                 swarm.behaviour_mut().pool.start_connecting();
             }
         }
+        log::debug!("Finished network action");
     }
 
     pub async fn network_info(&self) -> Result<NetworkInfo, NetworkError> {
