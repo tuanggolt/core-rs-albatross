@@ -1,25 +1,47 @@
 use std::fmt;
 use std::fs;
+use std::sync::Arc;
+use std::sync::RwLock;
 
+use ckb_rocksdb::ops::CreateCF;
+use ckb_rocksdb::ops::DeleteCF;
+use ckb_rocksdb::ops::GetColumnFamilys;
+use ckb_rocksdb::ops::OpenCF;
+use ckb_rocksdb::ops::PutCF;
 // re export the lmdb error
 pub use lmdb_zero::open;
 
 pub use lmdb_zero::Error as LmdbError;
 
-use crate::cursor::{RawReadCursor, ReadCursor, WriteCursor as WriteCursorTrait};
-use ::rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, Options, SingleThreaded, DB};
-
 use super::*;
+use crate::cursor::{RawReadCursor, ReadCursor, WriteCursor as WriteCursorTrait};
+use ckb_rocksdb::ops::Delete;
+use ckb_rocksdb::ops::Get;
+use ckb_rocksdb::ops::GetCF;
+use ckb_rocksdb::ops::Iterate;
+use ckb_rocksdb::ops::Open;
+use ckb_rocksdb::ops::Put;
+use ckb_rocksdb::ops::TransactionBegin;
+use ckb_rocksdb::DBVector;
+use ckb_rocksdb::TransactionDB;
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct RocksDBEnvironment {
     path: String,
+    db: Arc<RwLock<ckb_rocksdb::TransactionDB>>,
+}
+
+impl fmt::Debug for RocksDBEnvironment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Debugging Database")
+    }
 }
 
 impl Clone for RocksDBEnvironment {
     fn clone(&self) -> Self {
         Self {
             path: self.path.clone(),
+            db: Arc::clone(&self.db),
         }
     }
 }
@@ -52,22 +74,32 @@ impl RocksDBEnvironment {
     ) -> Result<Self, LmdbError> {
         fs::create_dir_all(path).unwrap();
 
+        let mut database = TransactionDB::open_default(path).unwrap();
+        let opts = ckb_rocksdb::Options::default();
+
+        // Create the column families here?
+        //database.create_cf("test", &opts).unwrap();
+
         let rocksdb = RocksDBEnvironment {
             path: path.to_string(),
+            db: Arc::new(RwLock::new(database)),
         };
 
         Ok(rocksdb)
     }
 
     pub(super) fn open_database(&self, name: String, _flags: DatabaseFlags) -> RocksDatabase {
-        let mut full_path = String::new();
-        full_path.push_str(&self.path);
-        full_path.push('/');
-        full_path.push_str(&name);
+        let mut opts = ckb_rocksdb::Options::default();
+        opts.create_if_missing(true);
 
-        let database = DB::open_default(full_path).unwrap();
+        let mut db_access = self.db.write().unwrap();
 
-        RocksDatabase { db: database }
+        db_access.create_cf(name.clone(), &opts).unwrap();
+
+        RocksDatabase {
+            cf: name.clone(),
+            database: Arc::clone(&self.db),
+        }
     }
 
     pub(super) fn drop_database(self) -> io::Result<()> {
@@ -83,17 +115,32 @@ impl RocksDBEnvironment {
     }
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
+//This is essentially a column family
 pub struct RocksDatabase {
-    db: rocksdb::DBWithThreadMode<SingleThreaded>,
+    cf: String,
+    database: Arc<RwLock<ckb_rocksdb::TransactionDB>>,
+}
+impl fmt::Debug for RocksDatabase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Debugging Database")
+    }
 }
 
-pub struct RocksDBReadTransaction {}
+pub struct RocksDBReadTransaction<'txn> {
+    txn: ckb_rocksdb::Transaction<'txn, TransactionDB>,
+}
 
-impl<'env> RocksDBReadTransaction {
-    pub(super) fn new(_env: &'env RocksDBEnvironment) -> Self {
-        // No transaction support for RocksDB
-        RocksDBReadTransaction {}
+impl<'env> RocksDBReadTransaction<'env> {
+    pub(super) fn new(env: &'env RocksDBEnvironment) -> Self {
+        let mut txn_options = ckb_rocksdb::TransactionOptions::new();
+        txn_options.set_snapshot(true);
+
+        let access = env.db.read().unwrap();
+
+        let transaction = access.transaction(&ckb_rocksdb::WriteOptions::default(), &txn_options);
+
+        RocksDBReadTransaction { txn: transaction }
     }
 
     pub(super) fn get<K, V>(&self, db: &RocksDatabase, key: &K) -> Option<V>
@@ -101,33 +148,46 @@ impl<'env> RocksDBReadTransaction {
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        let result: Option<Vec<u8>> = db
-            .db
-            .get(AsDatabaseBytes::as_database_bytes(key).as_ref())
+        let access = db.database.read().unwrap();
+
+        let cf_handle = access.cf_handle(&db.cf).unwrap();
+
+        let result: Option<DBVector> = self
+            .txn
+            .get_cf(cf_handle, AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
+
         Some(FromDatabaseValue::copy_from_database(&result?).unwrap())
     }
 
     pub(super) fn cursor<'db>(&self, db: &'db Database) -> RocksdbCursor<'db> {
-        let cursor = db.persistent().unwrap().db.raw_iterator();
+        let cursor = db
+            .persistent()
+            .unwrap()
+            .database
+            .read()
+            .unwrap()
+            .raw_iterator();
         RocksdbCursor {
             raw: RawRocksDbCursor { cursor },
         }
     }
 }
 
-impl<'env> fmt::Debug for RocksDBReadTransaction {
+impl<'env> fmt::Debug for RocksDBReadTransaction<'env> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "RocksDBReadTransaction {{}}")
     }
 }
 
-pub struct RocksDBWriteTransaction {}
+pub struct RocksDBWriteTransaction<'txn> {
+    txn: ckb_rocksdb::Transaction<'txn, TransactionDB>,
+}
 
-impl<'env> RocksDBWriteTransaction {
-    pub(super) fn new(_env: &'env RocksDBEnvironment) -> Self {
-        //No txn support in RocksDB
-        RocksDBWriteTransaction {}
+impl<'env> RocksDBWriteTransaction<'env> {
+    pub(super) fn new(env: &'env RocksDBEnvironment) -> Self {
+        let transaction = env.db.read().unwrap().transaction_default();
+        RocksDBWriteTransaction { txn: transaction }
     }
 
     pub(super) fn get<K, V>(&self, db: &RocksDatabase, key: &K) -> Option<V>
@@ -135,9 +195,13 @@ impl<'env> RocksDBWriteTransaction {
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        let result: Option<Vec<u8>> = db
-            .db
-            .get(AsDatabaseBytes::as_database_bytes(key).as_ref())
+        let access = db.database.read().unwrap();
+
+        let cf_handle = access.cf_handle(&db.cf).unwrap();
+
+        let result: Option<DBVector> = self
+            .txn
+            .get_cf(cf_handle, AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
         Some(FromDatabaseValue::copy_from_database(&result?).unwrap())
     }
@@ -153,7 +217,11 @@ impl<'env> RocksDBWriteTransaction {
         let mut vec_value = vec![0u8; value_size];
         value.copy_into_database(&mut vec_value);
 
-        db.db.put(key.as_ref(), vec_value).unwrap();
+        let access = db.database.read().unwrap();
+
+        let cf_handle = access.cf_handle(&db.cf).unwrap();
+
+        self.txn.put_cf(cf_handle, key.as_ref(), vec_value).unwrap();
     }
 
     pub(super) fn put<K, V>(&mut self, db: &RocksDatabase, key: &K, value: &V)
@@ -163,15 +231,26 @@ impl<'env> RocksDBWriteTransaction {
     {
         let key = AsDatabaseBytes::as_database_bytes(key);
         let value = AsDatabaseBytes::as_database_bytes(value);
-        db.db.put(key.as_ref(), value.as_ref()).unwrap();
+
+        let access = db.database.read().unwrap();
+
+        let cf_handle = access.cf_handle(&db.cf).unwrap();
+
+        self.txn
+            .put_cf(cf_handle, key.as_ref(), value.as_ref())
+            .unwrap();
     }
 
     pub(super) fn remove<K>(&mut self, db: &RocksDatabase, key: &K)
     where
         K: AsDatabaseBytes + ?Sized,
     {
-        db.db
-            .delete(AsDatabaseBytes::as_database_bytes(key).as_ref())
+        let access = db.database.read().unwrap();
+
+        let cf_handle = access.cf_handle(&db.cf).unwrap();
+
+        self.txn
+            .delete_cf(cf_handle, AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
     }
 
@@ -180,38 +259,53 @@ impl<'env> RocksDBWriteTransaction {
         K: AsDatabaseBytes + ?Sized,
         V: AsDatabaseBytes + ?Sized,
     {
-        db.db
-            .delete(AsDatabaseBytes::as_database_bytes(key).as_ref())
+        let access = db.database.read().unwrap();
+
+        let cf_handle = access.cf_handle(&db.cf).unwrap();
+        self.txn
+            .delete_cf(cf_handle, AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
     }
 
     pub(super) fn commit(self) {
-        //No txn suport in RocksDB
+        self.txn.commit().unwrap();
     }
 
     pub(super) fn cursor<'db>(&self, db: &'db Database) -> RocksdbCursor<'db> {
-        let cursor = db.persistent().unwrap().db.raw_iterator();
+        let cursor = db
+            .persistent()
+            .unwrap()
+            .database
+            .read()
+            .unwrap()
+            .raw_iterator();
         RocksdbCursor {
             raw: RawRocksDbCursor { cursor },
         }
     }
 
     pub(super) fn write_cursor<'db>(&self, db: &'db Database) -> RocksDBWriteCursor<'db> {
-        let cursor = db.persistent().unwrap().db.raw_iterator();
+        let cursor = db
+            .persistent()
+            .unwrap()
+            .database
+            .read()
+            .unwrap()
+            .raw_iterator();
         RocksDBWriteCursor {
             raw: RawRocksDbCursor { cursor },
         }
     }
 }
 
-impl<'env> fmt::Debug for RocksDBWriteTransaction {
+impl<'env> fmt::Debug for RocksDBWriteTransaction<'env> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "LmdbWriteTransaction {{}}")
     }
 }
 
 pub struct RawRocksDbCursor<'db> {
-    cursor: rocksdb::DBRawIteratorWithThreadMode<'db, DBWithThreadMode<SingleThreaded>>,
+    cursor: ckb_rocksdb::DBRawIterator<'db>,
 }
 
 impl<'txn, 'db> RawReadCursor for RawRocksDbCursor<'txn> {
@@ -524,9 +618,7 @@ mod tests {
 
             // Check aborted transaction.
             let tx = ReadTransaction::new(&env);
-            // No txn abort in rocksddb!
-            //assert!(tx.get::<str, String>(&db, "test").is_none());
-            assert!(tx.get::<str, String>(&db, "test").is_some());
+            assert!(tx.get::<str, String>(&db, "test").is_none());
         }
 
         env.drop_database().unwrap();

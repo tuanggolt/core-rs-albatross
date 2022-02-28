@@ -32,7 +32,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Environment {
     Volatile(volatile::VolatileEnvironment),
     Persistent(rocksdb::RocksDBEnvironment),
@@ -92,14 +92,14 @@ impl Database {
 }
 
 #[derive(Debug)]
-pub enum Transaction {
-    VolatileRead(volatile::VolatileReadTransaction),
-    VolatileWrite(volatile::VolatileWriteTransaction),
-    PersistentRead(rocksdb::RocksDBReadTransaction),
-    PersistentWrite(rocksdb::RocksDBWriteTransaction),
+pub enum Transaction<'txn> {
+    VolatileRead(volatile::VolatileReadTransaction<'txn>),
+    VolatileWrite(volatile::VolatileWriteTransaction<'txn>),
+    PersistentRead(rocksdb::RocksDBReadTransaction<'txn>),
+    PersistentWrite(rocksdb::RocksDBWriteTransaction<'txn>),
 }
 
-impl<'env> Transaction {
+impl<'env> Transaction<'env> {
     pub fn get<K, V>(&self, db: &Database, key: &K) -> Option<V>
     where
         K: AsDatabaseBytes + ?Sized,
@@ -124,9 +124,9 @@ impl<'env> Transaction {
 }
 
 #[derive(Debug)]
-pub struct ReadTransaction(Transaction);
+pub struct ReadTransaction<'txn>(Transaction<'txn>);
 
-impl<'env> ReadTransaction {
+impl<'env> ReadTransaction<'env> {
     pub fn new(env: &'env Environment) -> Self {
         match *env {
             Environment::Volatile(ref env) => ReadTransaction(Transaction::VolatileRead(
@@ -153,18 +153,18 @@ impl<'env> ReadTransaction {
     }
 }
 
-impl<'env> Deref for ReadTransaction {
-    type Target = Transaction;
+impl<'env> Deref for ReadTransaction<'env> {
+    type Target = Transaction<'env>;
 
-    fn deref(&self) -> &Transaction {
+    fn deref(&self) -> &Transaction<'env> {
         &self.0
     }
 }
 
 #[derive(Debug)]
-pub struct WriteTransaction(Transaction);
+pub struct WriteTransaction<'txn>(Transaction<'txn>);
 
-impl<'env> WriteTransaction {
+impl<'env> WriteTransaction<'env> {
     pub fn new(env: &'env Environment) -> Self {
         match *env {
             Environment::Volatile(ref env) => WriteTransaction(Transaction::VolatileWrite(
@@ -285,10 +285,10 @@ impl<'env> WriteTransaction {
     }
 }
 
-impl<'env> Deref for WriteTransaction {
-    type Target = Transaction;
+impl<'env> Deref for WriteTransaction<'env> {
+    type Target = Transaction<'env>;
 
-    fn deref(&self) -> &Transaction {
+    fn deref(&self) -> &Transaction<'env> {
         &self.0
     }
 }

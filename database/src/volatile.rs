@@ -14,7 +14,7 @@ pub struct VolatileEnvironment {
     temp_dir: Arc<TempDir>,
     env: RocksDBEnvironment,
 }
-
+/*
 impl Clone for VolatileEnvironment {
     fn clone(&self) -> Self {
         Self {
@@ -23,6 +23,7 @@ impl Clone for VolatileEnvironment {
         }
     }
 }
+*/
 
 #[derive(Debug)]
 pub enum VolatileDatabaseError {
@@ -110,9 +111,9 @@ impl VolatileDatabase {
 }
 
 #[derive(Debug)]
-pub struct VolatileReadTransaction(RocksDBReadTransaction);
+pub struct VolatileReadTransaction<'txn>(RocksDBReadTransaction<'txn>);
 
-impl<'env> VolatileReadTransaction {
+impl<'env> VolatileReadTransaction<'env> {
     pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
         VolatileReadTransaction(RocksDBReadTransaction::new(&env.env))
     }
@@ -131,9 +132,9 @@ impl<'env> VolatileReadTransaction {
 }
 
 #[derive(Debug)]
-pub struct VolatileWriteTransaction(RocksDBWriteTransaction);
+pub struct VolatileWriteTransaction<'txn>(RocksDBWriteTransaction<'txn>);
 
-impl<'env> VolatileWriteTransaction {
+impl<'env> VolatileWriteTransaction<'env> {
     #[allow(clippy::new_ret_no_self)]
     pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
         VolatileWriteTransaction(RocksDBWriteTransaction::new(&env.env))
@@ -525,7 +526,7 @@ mod tests {
 
     #[test]
     fn isolation_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
         {
             let db = env.open_database("test".to_string());
 
@@ -558,7 +559,7 @@ mod tests {
 
     #[test]
     fn duplicates_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
         {
             let db = env.open_database_with_flags(
                 "test".to_string(),
@@ -624,7 +625,7 @@ mod tests {
 
     #[test]
     fn cursor_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
         {
             let db = env.open_database_with_flags(
                 "test".to_string(),
