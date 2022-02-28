@@ -455,11 +455,6 @@ impl ChainStore {
     }
 
     pub fn prune_epoch(&self, epoch_number: u32, txn: &mut WriteTransaction) {
-        // The zero-th epoch is already pruned.
-        if epoch_number == 0 {
-            return;
-        }
-
         for height in policy::first_block_of(epoch_number)..policy::election_block_of(epoch_number)
         {
             if let Some(hash) = txn.get::<u32, Blake2bHash>(&self.height_idx, &height) {
