@@ -258,10 +258,17 @@ impl Blockchain {
         this.chain_store.set_head(&mut txn, &block_hash);
 
         if is_election_block {
-            this.chain_store.prune_epoch(
-                policy::epoch_at(block_number).saturating_sub(MAX_EPOCHS_STORED),
-                &mut txn,
-            );
+            // Calculate the epoch to be pruned. Saturate at zero.
+            let pruned_epoch = policy::epoch_at(block_number).saturating_sub(MAX_EPOCHS_STORED);
+
+            // We never prune the zero-th epoch since it has nothing to prune.
+            if pruned_epoch > 0 {
+                // Prune the History Store.
+                this.history_store.remove_history(&mut txn, pruned_epoch);
+
+                // Prune the Chain Store.
+                this.chain_store.prune_epoch(pruned_epoch, &mut txn);
+            }
         }
 
         txn.commit();
