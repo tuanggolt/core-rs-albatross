@@ -21,7 +21,7 @@ use crate::trie_proof::TrieProof;
 /// It is generic over the values and makes use of Nimiq's database for storage.
 #[derive(Debug)]
 pub struct MerkleRadixTrie<A: Serialize + Deserialize + Clone> {
-    db: Database,
+    pub db: Database,
     _value: PhantomData<A>,
 }
 
@@ -31,11 +31,11 @@ impl<A: Serialize + Deserialize + Clone> MerkleRadixTrie<A> {
         let db = env.open_database(name.to_string());
 
         let tree = MerkleRadixTrie {
-            db,
+            db: db,
             _value: PhantomData,
         };
 
-        let mut txn = WriteTransaction::new(&env);
+        let mut txn = WriteTransaction::new(&tree.db);
 
         if tree.get_root(&txn).is_none() {
             let root = KeyNibbles::root();

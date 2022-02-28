@@ -110,11 +110,11 @@ impl VolatileDatabase {
 }
 
 #[derive(Debug)]
-pub struct VolatileReadTransaction(RocksDBReadTransaction);
+pub struct VolatileReadTransaction<'txn>(RocksDBReadTransaction<'txn>);
 
-impl<'env> VolatileReadTransaction {
-    pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
-        VolatileReadTransaction(RocksDBReadTransaction::new(&env.env))
+impl<'env> VolatileReadTransaction<'env> {
+    pub(super) fn new(db: &'env VolatileDatabase) -> Self {
+        VolatileReadTransaction(RocksDBReadTransaction::new(&db.as_lmdb()))
     }
 
     pub(super) fn get<K, V>(&self, db: &VolatileDatabase, key: &K) -> Option<V>
@@ -131,12 +131,12 @@ impl<'env> VolatileReadTransaction {
 }
 
 #[derive(Debug)]
-pub struct VolatileWriteTransaction(RocksDBWriteTransaction);
+pub struct VolatileWriteTransaction<'txn>(RocksDBWriteTransaction<'txn>);
 
-impl<'env> VolatileWriteTransaction {
+impl<'env> VolatileWriteTransaction<'env> {
     #[allow(clippy::new_ret_no_self)]
-    pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
-        VolatileWriteTransaction(RocksDBWriteTransaction::new(&env.env))
+    pub(super) fn new(db: &'env VolatileDatabase) -> Self {
+        VolatileWriteTransaction(RocksDBWriteTransaction::new(&db.as_lmdb()))
     }
 
     pub(super) fn get<K, V>(&self, db: &VolatileDatabase, key: &K) -> Option<V>
@@ -477,12 +477,12 @@ mod tests {
 
             // Read non-existent value.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert!(tx.get::<str, String>(&db, "test").is_none());
             }
 
             // Read non-existent value.
-            let mut tx = WriteTransaction::new(&env);
+            let mut tx = WriteTransaction::new(&db);
             assert!(tx.get::<str, String>(&db, "test").is_none());
 
             // Write and read value.
@@ -494,29 +494,29 @@ mod tests {
             tx.commit();
 
             // Read value.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             assert_eq!(tx.get::<str, String>(&db, "test"), Some("two".to_string()));
             tx.close();
 
             // Remove value.
-            let mut tx = WriteTransaction::new(&env);
+            let mut tx = WriteTransaction::new(&db);
             tx.remove(&db, "test");
             assert!(tx.get::<str, String>(&db, "test").is_none());
             tx.commit();
 
             // Check removal.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert!(tx.get::<str, String>(&db, "test").is_none());
             }
 
             // Write and abort.
-            let mut tx = WriteTransaction::new(&env);
+            let mut tx = WriteTransaction::new(&db);
             tx.put_reserve(&db, "test", "one");
             tx.abort();
 
             // Check aborted transaction.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             assert!(tx.get::<str, String>(&db, "test").is_none());
         }
 
@@ -525,16 +525,16 @@ mod tests {
 
     #[test]
     fn isolation_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
         {
             let db = env.open_database("test".to_string());
 
             // Read non-existent value.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             assert!(tx.get::<str, String>(&db, "test").is_none());
 
             // WriteTransaction.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert!(txw.get::<str, String>(&db, "test").is_none());
             txw.put_reserve(&db, "test", "one");
             assert_eq!(txw.get::<str, String>(&db, "test"), Some("one".to_string()));
@@ -549,7 +549,7 @@ mod tests {
             assert!(tx.get::<str, String>(&db, "test").is_none());
 
             // Have a new ReadTransaction read the new state.
-            let tx2 = ReadTransaction::new(&env);
+            let tx2 = ReadTransaction::new(&db);
             assert_eq!(tx2.get::<str, String>(&db, "test"), Some("one".to_string()));
         }
 
@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn duplicates_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
         {
             let db = env.open_database_with_flags(
                 "test".to_string(),
@@ -566,7 +566,7 @@ mod tests {
             );
 
             // Write one value.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert!(txw.get::<str, u32>(&db, "test").is_none());
             txw.put::<str, u32>(&db, "test", &125);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(125));
@@ -574,12 +574,12 @@ mod tests {
 
             // Have a new ReadTransaction read the new state.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert_eq!(tx.get::<str, u32>(&db, "test"), Some(125));
             }
 
             // Write a second smaller value.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(125));
             txw.put::<str, u32>(&db, "test", &12);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(12));
@@ -587,12 +587,12 @@ mod tests {
 
             // Have a new ReadTransaction read the smaller value.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert_eq!(tx.get::<str, u32>(&db, "test"), Some(12));
             }
 
             // Remove smaller value and write larger value.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(12));
             txw.remove_item::<str, u32>(&db, "test", &12);
             txw.put::<str, u32>(&db, "test", &5783);
@@ -601,12 +601,12 @@ mod tests {
 
             // Have a new ReadTransaction read the smallest value.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert_eq!(tx.get::<str, u32>(&db, "test"), Some(125));
             }
 
             // Remove everything.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(125));
             txw.remove::<str>(&db, "test");
             assert!(txw.get::<str, u32>(&db, "test").is_none());
@@ -614,7 +614,7 @@ mod tests {
 
             // Have a new ReadTransaction read the new state.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert!(tx.get::<str, u32>(&db, "test").is_none());
             }
         }
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn cursor_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126, open::NOTLS).unwrap();
+        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
         {
             let db = env.open_database_with_flags(
                 "test".to_string(),
@@ -635,7 +635,7 @@ mod tests {
             let test2: String = "test2".to_string();
 
             // Write some values.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert!(txw.get::<str, u32>(&db, "test").is_none());
             txw.put::<str, u32>(&db, "test1", &125);
             txw.put::<str, u32>(&db, "test1", &12);
@@ -644,7 +644,7 @@ mod tests {
             txw.commit();
 
             // Have a new ReadTransaction read the new state.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             let mut cursor = tx.cursor(&db);
             assert_eq!(cursor.first::<String, u32>(), Some((test1.clone(), 12)));
             assert_eq!(cursor.last::<String, u32>(), Some((test2.clone(), 5783)));

@@ -158,7 +158,7 @@ impl GenesisBuilder {
         let mut genesis_accounts: Vec<(KeyNibbles, Account)> = Vec::new();
 
         // Note: This line needs to be AFTER we call Accounts::new().
-        let mut txn = WriteTransaction::new(&env);
+        let mut txn = WriteTransaction::new(&accounts.tree.db);
 
         debug!("Genesis accounts");
         for genesis_account in &self.accounts {

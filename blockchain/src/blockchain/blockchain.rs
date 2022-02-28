@@ -236,7 +236,7 @@ impl Blockchain {
 
         // Initialize accounts.
         let accounts = Accounts::new(env.clone());
-        let mut txn = WriteTransaction::new(&env);
+        let mut txn = WriteTransaction::new(&accounts.tree.db);
         accounts.init(&mut txn, genesis_accounts);
 
         // Store genesis block.
@@ -272,7 +272,7 @@ impl Blockchain {
     }
 
     pub fn read_transaction(&self) -> ReadTransaction {
-        ReadTransaction::new(&self.env)
+        ReadTransaction::new(&self.state.accounts.tree.db)
     }
 
     pub fn write_transaction(&self) -> WriteTransaction {

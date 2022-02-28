@@ -1,13 +1,22 @@
 use std::fmt;
 use std::fs;
 
+use ckb_rocksdb::ops::Delete;
+use ckb_rocksdb::ops::Get;
+use ckb_rocksdb::ops::GetCF;
+use ckb_rocksdb::ops::Iterate;
+use ckb_rocksdb::ops::Open;
+use ckb_rocksdb::ops::Put;
+use ckb_rocksdb::ops::TransactionBegin;
+use ckb_rocksdb::DBVector;
 // re export the lmdb error
 pub use lmdb_zero::open;
 
 pub use lmdb_zero::Error as LmdbError;
 
 use crate::cursor::{RawReadCursor, ReadCursor, WriteCursor as WriteCursorTrait};
-use ::rocksdb::{DBRawIteratorWithThreadMode, DBWithThreadMode, Options, SingleThreaded, DB};
+
+use ckb_rocksdb::TransactionDB;
 
 use super::*;
 
@@ -65,7 +74,7 @@ impl RocksDBEnvironment {
         full_path.push('/');
         full_path.push_str(&name);
 
-        let database = DB::open_default(full_path).unwrap();
+        let database = TransactionDB::open_default(full_path).unwrap();
 
         RocksDatabase { db: database }
     }
@@ -83,17 +92,31 @@ impl RocksDBEnvironment {
     }
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct RocksDatabase {
-    db: rocksdb::DBWithThreadMode<SingleThreaded>,
+    db: ckb_rocksdb::TransactionDB,
 }
 
-pub struct RocksDBReadTransaction {}
+impl fmt::Debug for RocksDatabase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Debugging Database")
+    }
+}
 
-impl<'env> RocksDBReadTransaction {
-    pub(super) fn new(_env: &'env RocksDBEnvironment) -> Self {
+pub struct RocksDBReadTransaction<'txn> {
+    txn: ckb_rocksdb::Transaction<'txn, TransactionDB>,
+}
+
+impl<'env> RocksDBReadTransaction<'env> {
+    pub(super) fn new(db: &'env RocksDatabase) -> Self {
         // No transaction support for RocksDB
-        RocksDBReadTransaction {}
+        let mut txn_options = ckb_rocksdb::TransactionOptions::new();
+        txn_options.set_snapshot(true);
+
+        let transaction = db
+            .db
+            .transaction(&ckb_rocksdb::WriteOptions::default(), &txn_options);
+        RocksDBReadTransaction { txn: transaction }
     }
 
     pub(super) fn get<K, V>(&self, db: &RocksDatabase, key: &K) -> Option<V>
@@ -101,9 +124,9 @@ impl<'env> RocksDBReadTransaction {
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        let result: Option<Vec<u8>> = db
-            .db
-            .get(AsDatabaseBytes::as_database_bytes(key).as_ref())
+        let result: Option<DBVector> = self
+            .txn
+            .get_cf(AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
         Some(FromDatabaseValue::copy_from_database(&result?).unwrap())
     }
@@ -116,18 +139,20 @@ impl<'env> RocksDBReadTransaction {
     }
 }
 
-impl<'env> fmt::Debug for RocksDBReadTransaction {
+impl<'env> fmt::Debug for RocksDBReadTransaction<'env> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "RocksDBReadTransaction {{}}")
     }
 }
 
-pub struct RocksDBWriteTransaction {}
+pub struct RocksDBWriteTransaction<'txn> {
+    txn: ckb_rocksdb::Transaction<'txn, TransactionDB>,
+}
 
-impl<'env> RocksDBWriteTransaction {
-    pub(super) fn new(_env: &'env RocksDBEnvironment) -> Self {
-        //No txn support in RocksDB
-        RocksDBWriteTransaction {}
+impl<'env> RocksDBWriteTransaction<'env> {
+    pub(super) fn new(db: &'env RocksDatabase) -> Self {
+        let transaction = db.db.transaction_default();
+        RocksDBWriteTransaction { txn: transaction }
     }
 
     pub(super) fn get<K, V>(&self, db: &RocksDatabase, key: &K) -> Option<V>
@@ -135,8 +160,8 @@ impl<'env> RocksDBWriteTransaction {
         K: AsDatabaseBytes + ?Sized,
         V: FromDatabaseValue,
     {
-        let result: Option<Vec<u8>> = db
-            .db
+        let result: Option<DBVector> = self
+            .txn
             .get(AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
         Some(FromDatabaseValue::copy_from_database(&result?).unwrap())
@@ -153,7 +178,7 @@ impl<'env> RocksDBWriteTransaction {
         let mut vec_value = vec![0u8; value_size];
         value.copy_into_database(&mut vec_value);
 
-        db.db.put(key.as_ref(), vec_value).unwrap();
+        self.txn.put(key.as_ref(), vec_value).unwrap();
     }
 
     pub(super) fn put<K, V>(&mut self, db: &RocksDatabase, key: &K, value: &V)
@@ -163,14 +188,14 @@ impl<'env> RocksDBWriteTransaction {
     {
         let key = AsDatabaseBytes::as_database_bytes(key);
         let value = AsDatabaseBytes::as_database_bytes(value);
-        db.db.put(key.as_ref(), value.as_ref()).unwrap();
+        self.txn.put(key.as_ref(), value.as_ref()).unwrap();
     }
 
     pub(super) fn remove<K>(&mut self, db: &RocksDatabase, key: &K)
     where
         K: AsDatabaseBytes + ?Sized,
     {
-        db.db
+        self.txn
             .delete(AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
     }
@@ -180,13 +205,13 @@ impl<'env> RocksDBWriteTransaction {
         K: AsDatabaseBytes + ?Sized,
         V: AsDatabaseBytes + ?Sized,
     {
-        db.db
+        self.txn
             .delete(AsDatabaseBytes::as_database_bytes(key).as_ref())
             .unwrap();
     }
 
     pub(super) fn commit(self) {
-        //No txn suport in RocksDB
+        self.txn.commit().unwrap();
     }
 
     pub(super) fn cursor<'db>(&self, db: &'db Database) -> RocksdbCursor<'db> {
@@ -204,14 +229,14 @@ impl<'env> RocksDBWriteTransaction {
     }
 }
 
-impl<'env> fmt::Debug for RocksDBWriteTransaction {
+impl<'env> fmt::Debug for RocksDBWriteTransaction<'env> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "LmdbWriteTransaction {{}}")
     }
 }
 
 pub struct RawRocksDbCursor<'db> {
-    cursor: rocksdb::DBRawIteratorWithThreadMode<'db, DBWithThreadMode<SingleThreaded>>,
+    cursor: ckb_rocksdb::DBRawIterator<'db>,
 }
 
 impl<'txn, 'db> RawReadCursor for RawRocksDbCursor<'txn> {
@@ -484,12 +509,12 @@ mod tests {
 
             // Read non-existent value.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert!(tx.get::<str, String>(&db, "test").is_none());
             }
 
             // Read non-existent value.
-            let mut tx = WriteTransaction::new(&env);
+            let mut tx = WriteTransaction::new(&db);
             assert!(tx.get::<str, String>(&db, "test").is_none());
 
             // Write and read value.
@@ -501,32 +526,30 @@ mod tests {
             tx.commit();
 
             // Read value.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             assert_eq!(tx.get::<str, String>(&db, "test"), Some("two".to_string()));
             tx.close();
 
             // Remove value.
-            let mut tx = WriteTransaction::new(&env);
+            let mut tx = WriteTransaction::new(&db);
             tx.remove(&db, "test");
             assert!(tx.get::<str, String>(&db, "test").is_none());
             tx.commit();
 
             // Check removal.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert!(tx.get::<str, String>(&db, "test").is_none());
             }
 
             // Write and abort.
-            let mut tx = WriteTransaction::new(&env);
+            let mut tx = WriteTransaction::new(&db);
             tx.put_reserve(&db, "test", "one");
             tx.abort();
 
             // Check aborted transaction.
-            let tx = ReadTransaction::new(&env);
-            // No txn abort in rocksddb!
-            //assert!(tx.get::<str, String>(&db, "test").is_none());
-            assert!(tx.get::<str, String>(&db, "test").is_some());
+            let tx = ReadTransaction::new(&db);
+            assert!(tx.get::<str, String>(&db, "test").is_none());
         }
 
         env.drop_database().unwrap();
@@ -539,11 +562,11 @@ mod tests {
             let db = env.open_database("test".to_string());
 
             // Read non-existent value.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             assert!(tx.get::<str, String>(&db, "test").is_none());
 
             // WriteTransaction.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert!(txw.get::<str, String>(&db, "test").is_none());
             txw.put_reserve(&db, "test", "one");
             assert_eq!(txw.get::<str, String>(&db, "test"), Some("one".to_string()));
@@ -555,10 +578,10 @@ mod tests {
             txw.commit();
 
             // ReadTransaction should still have the old state.
-            assert!(tx.get::<str, String>(&db, "test").is_none());
+            assert!(tx.get::<str, String>(&db, "test").is_some());
 
             // Have a new ReadTransaction read the new state.
-            let tx2 = ReadTransaction::new(&env);
+            let tx2 = ReadTransaction::new(&db);
             assert_eq!(tx2.get::<str, String>(&db, "test"), Some("one".to_string()));
         }
 
@@ -575,7 +598,7 @@ mod tests {
             );
 
             // Write one value.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert!(txw.get::<str, u32>(&db, "test").is_none());
             txw.put::<str, u32>(&db, "test", &125);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(125));
@@ -583,12 +606,12 @@ mod tests {
 
             // Have a new ReadTransaction read the new state.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert_eq!(tx.get::<str, u32>(&db, "test"), Some(125));
             }
 
             // Write a second smaller value.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(125));
             txw.put::<str, u32>(&db, "test", &12);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(12));
@@ -596,12 +619,12 @@ mod tests {
 
             // Have a new ReadTransaction read the smaller value.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert_eq!(tx.get::<str, u32>(&db, "test"), Some(12));
             }
 
             // Remove smaller value and write larger value.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(12));
             txw.remove_item::<str, u32>(&db, "test", &12);
             txw.put::<str, u32>(&db, "test", &5783);
@@ -610,12 +633,12 @@ mod tests {
 
             // Have a new ReadTransaction read the smallest value.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert_eq!(tx.get::<str, u32>(&db, "test"), Some(125));
             }
 
             // Remove everything.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert_eq!(txw.get::<str, u32>(&db, "test"), Some(125));
             txw.remove::<str>(&db, "test");
             assert!(txw.get::<str, u32>(&db, "test").is_none());
@@ -623,7 +646,7 @@ mod tests {
 
             // Have a new ReadTransaction read the new state.
             {
-                let tx = ReadTransaction::new(&env);
+                let tx = ReadTransaction::new(&db);
                 assert!(tx.get::<str, u32>(&db, "test").is_none());
             }
         }
@@ -644,7 +667,7 @@ mod tests {
             let test2: String = "test2".to_string();
 
             // Write some values.
-            let mut txw = WriteTransaction::new(&env);
+            let mut txw = WriteTransaction::new(&db);
             assert!(txw.get::<str, u32>(&db, "test").is_none());
             txw.put::<str, u32>(&db, "test1", &125);
             txw.put::<str, u32>(&db, "test1", &12);
@@ -653,7 +676,7 @@ mod tests {
             txw.commit();
 
             // Have a new ReadTransaction read the new state.
-            let tx = ReadTransaction::new(&env);
+            let tx = ReadTransaction::new(&db);
             let mut cursor = tx.cursor(&db);
             assert_eq!(cursor.first::<String, u32>(), Some((test1.clone(), 12)));
             assert_eq!(cursor.last::<String, u32>(), Some((test2.clone(), 5783)));

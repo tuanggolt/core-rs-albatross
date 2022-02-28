@@ -8,8 +8,8 @@ use nimiq_mmr::store::Store;
 
 #[derive(Debug)]
 enum Tx<'a> {
-    Write(&'a mut WriteTransaction),
-    Read(&'a Transaction),
+    Write(&'a mut WriteTransaction<'a>),
+    Read(&'a Transaction<'a>),
 }
 
 /// A store implementation for MMRs based on a single database of LMDB.

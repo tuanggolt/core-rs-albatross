@@ -20,11 +20,11 @@ impl WalletStore {
     }
 
     pub fn create_read_transaction(&self) -> ReadTransaction {
-        ReadTransaction::new(&self.env)
+        ReadTransaction::new(&self.wallet_db)
     }
 
     pub fn create_write_transaction(&self) -> WriteTransaction {
-        WriteTransaction::new(&self.env)
+        WriteTransaction::new(&self.wallet_db)
     }
 
     pub fn list(&self, txn_option: Option<&Transaction>) -> Vec<Address> {
@@ -32,7 +32,7 @@ impl WalletStore {
         let txn = match txn_option {
             Some(txn) => txn,
             None => {
-                read_txn = ReadTransaction::new(&self.env);
+                read_txn = ReadTransaction::new(&self.wallet_db);
                 &read_txn
             }
         };
@@ -56,7 +56,7 @@ impl WalletStore {
     ) -> Option<Locked<WalletAccount>> {
         match txn_option {
             Some(txn) => txn.get(&self.wallet_db, address),
-            None => ReadTransaction::new(&self.env).get(&self.wallet_db, address),
+            None => ReadTransaction::new(&self.wallet_db).get(&self.wallet_db, address),
         }
     }
 

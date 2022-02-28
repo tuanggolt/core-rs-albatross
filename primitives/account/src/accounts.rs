@@ -49,21 +49,21 @@ impl Accounts {
     pub fn size(&self, txn_option: Option<&DBTransaction>) -> usize {
         match txn_option {
             Some(txn) => self.tree.size(txn),
-            None => self.tree.size(&ReadTransaction::new(&self.env)),
+            None => self.tree.size(&ReadTransaction::new(&self.tree.db)),
         }
     }
 
     pub fn get(&self, key: &KeyNibbles, txn_option: Option<&DBTransaction>) -> Option<Account> {
         match txn_option {
             Some(txn) => self.tree.get(txn, key),
-            None => self.tree.get(&ReadTransaction::new(&self.env), key),
+            None => self.tree.get(&ReadTransaction::new(&self.tree.db), key),
         }
     }
 
     pub fn get_root(&self, txn_option: Option<&DBTransaction>) -> Blake2bHash {
         match txn_option {
             Some(txn) => self.tree.root_hash(txn),
-            None => self.tree.root_hash(&ReadTransaction::new(&self.env)),
+            None => self.tree.root_hash(&ReadTransaction::new(&self.tree.db)),
         }
     }
 
@@ -74,7 +74,7 @@ impl Accounts {
         block_height: u32,
         timestamp: u64,
     ) -> Result<Blake2bHash, AccountError> {
-        let mut txn = WriteTransaction::new(&self.env);
+        let mut txn = WriteTransaction::new(&self.tree.db);
 
         self.commit(&mut txn, transactions, inherents, block_height, timestamp)?;
 
