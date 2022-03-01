@@ -19,7 +19,8 @@ maintenance = { status = "experimental" }
 [dependencies]
 bitflags = "1.0"
 lmdb-zero = "0.4"
-ckb-rocksdb = "0.16.2"
+# ckb-rocksdb = "0.16.2"
+ckb-rocksdb = { git = "https://github.com/sisou/rust-rocksdb.git", branch = "transaction-db-cf" }
 log = "0.4"
 rand = "0.8"
 tempfile = "3"

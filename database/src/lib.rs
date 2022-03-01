@@ -32,7 +32,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Environment {
     Volatile(volatile::VolatileEnvironment),
     Persistent(rocksdb::RocksDBEnvironment),

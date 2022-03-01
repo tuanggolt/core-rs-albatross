@@ -9,7 +9,7 @@ use super::rocksdb::*;
 use super::*;
 use crate::cursor::{ReadCursor, WriteCursor as WriteCursorTrait};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VolatileEnvironment {
     temp_dir: Arc<TempDir>,
     env: RocksDBEnvironment,
@@ -51,7 +51,7 @@ impl Error for VolatileDatabaseError {
 
 impl VolatileEnvironment {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(max_dbs: u32) -> Result<Environment, VolatileDatabaseError> {
+    pub fn new(column_families: Vec<&str>) -> Result<Environment, VolatileDatabaseError> {
         let temp_dir = TempDir::new().map_err(VolatileDatabaseError::IoError)?;
         let path = temp_dir
             .path()
@@ -65,31 +65,13 @@ impl VolatileEnvironment {
             .to_string();
         Ok(Environment::Volatile(VolatileEnvironment {
             temp_dir: Arc::new(temp_dir),
-            env: RocksDBEnvironment::new_rocksdb_environment(&path, 0, max_dbs, None)
+            env: RocksDBEnvironment::new_rocksdb_environment(&path, column_families)
                 .map_err(VolatileDatabaseError::LmdbError)?,
         }))
     }
 
-    pub fn new_with_lmdb_flags(
-        max_dbs: u32,
-        max_readers: u32,
-    ) -> Result<Environment, VolatileDatabaseError> {
-        let temp_dir = TempDir::new().map_err(VolatileDatabaseError::IoError)?;
-        let path = temp_dir
-            .path()
-            .to_str()
-            .ok_or_else(|| {
-                VolatileDatabaseError::IoError(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Path cannot be converted into a string.",
-                ))
-            })?
-            .to_string();
-        Ok(Environment::Volatile(VolatileEnvironment {
-            temp_dir: Arc::new(temp_dir),
-            env: RocksDBEnvironment::new_rocksdb_environment(&path, 0, max_dbs, Some(max_readers))
-                .map_err(VolatileDatabaseError::LmdbError)?,
-        }))
+    pub fn new_with_lmdb_flags(column_families: Vec<&str>) -> Result<Environment, VolatileDatabaseError> {
+        Self::new(column_families)
     }
 
     pub(super) fn open_database(&self, name: String, flags: DatabaseFlags) -> VolatileDatabase {
@@ -472,9 +454,10 @@ mod tests {
 
     #[test]
     fn it_can_save_basic_objects() {
-        let env = VolatileEnvironment::new(1).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new(vec![DB_NAME]).unwrap();
         {
-            let db = env.open_database("test".to_string());
+            let db = env.open_database(DB_NAME.to_string());
 
             // Read non-existent value.
             {
@@ -526,9 +509,10 @@ mod tests {
 
     #[test]
     fn isolation_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new_with_lmdb_flags(vec![DB_NAME]).unwrap();
         {
-            let db = env.open_database("test".to_string());
+            let db = env.open_database(DB_NAME.to_string());
 
             // Read non-existent value.
             let tx = ReadTransaction::new(&env);
@@ -559,10 +543,11 @@ mod tests {
 
     #[test]
     fn duplicates_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new_with_lmdb_flags(vec![DB_NAME]).unwrap();
         {
             let db = env.open_database_with_flags(
-                "test".to_string(),
+                DB_NAME.to_string(),
                 DatabaseFlags::DUPLICATE_KEYS | DatabaseFlags::DUP_UINT_VALUES,
             );
 
@@ -625,10 +610,11 @@ mod tests {
 
     #[test]
     fn cursor_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new_with_lmdb_flags(vec![DB_NAME]).unwrap();
         {
             let db = env.open_database_with_flags(
-                "test".to_string(),
+                DB_NAME.to_string(),
                 DatabaseFlags::DUPLICATE_KEYS | DatabaseFlags::DUP_UINT_VALUES,
             );
 

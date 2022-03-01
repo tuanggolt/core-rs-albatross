@@ -38,7 +38,7 @@ fn generate_albatross(
     log::info!("genesis source file: {}", genesis_config.display());
 
     let mut builder = GenesisBuilder::new();
-    let env = VolatileEnvironment::new(10).expect("Could not open a volatile database");
+    let env = VolatileEnvironment::new(vec!["AccountsTrie"]).expect("Could not open a volatile database");
     builder.with_config_file(genesis_config).unwrap();
     let genesis_hash = builder.write_to_files(env, &directory).unwrap();
     write_genesis_rs(&directory, name, &genesis_hash);

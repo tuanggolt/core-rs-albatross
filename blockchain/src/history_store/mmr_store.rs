@@ -8,8 +8,8 @@ use nimiq_mmr::store::Store;
 
 #[derive(Debug)]
 enum Tx<'a> {
-    Write(&'a mut WriteTransaction),
-    Read(&'a Transaction),
+    Write(&'a mut WriteTransaction<'a>),
+    Read(&'a Transaction<'a>),
 }
 
 /// A store implementation for MMRs based on a single database of LMDB.
@@ -52,7 +52,7 @@ impl<'a, 'env> MMRStore<'a> {
     /// Create a writable store.
     pub fn with_write_transaction(
         hist_tree_db: &'a Database,
-        tx: &'a mut WriteTransaction,
+        tx: &'a mut WriteTransaction<'a>,
         epoch_number: u32,
     ) -> Self {
         let size = Self::get_size(hist_tree_db, tx, epoch_number);
