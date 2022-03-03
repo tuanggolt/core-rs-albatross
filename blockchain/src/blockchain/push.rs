@@ -263,11 +263,15 @@ impl Blockchain {
 
             // We never prune the zero-th epoch since it has nothing to prune.
             if pruned_epoch > 0 {
+                log::debug!("!!!! Started pruning process !!!");
+                log::debug!("      Now pruning the history store ");
                 // Prune the History Store.
                 this.history_store.remove_history(&mut txn, pruned_epoch);
 
+                log::debug!("      Started pruning the chain store ");
                 // Prune the Chain Store.
                 this.chain_store.prune_epoch(pruned_epoch, &mut txn);
+                log::debug!("!!!!  Done pruning");
             }
         }
 

@@ -195,6 +195,7 @@ impl HistoryStore {
     /// Returns None if there's no history tree corresponding to the given epoch number.
     pub fn remove_history(&self, txn: &mut WriteTransaction, epoch_number: u32) -> Option<()> {
         // Get the history tree.
+        log::debug!("          Getting the history tree");
         let mut tree = MerkleMountainRange::new(MMRStore::with_write_transaction(
             &self.hist_tree_db,
             txn,
@@ -204,18 +205,19 @@ impl HistoryStore {
         // Remove all leaves from the history tree and remember the respective hashes.
         let mut hashes = Vec::with_capacity(tree.num_leaves());
 
+        log::debug!("          Removing all leaves and storing their hashes");
         for i in (0..tree.num_leaves()).rev() {
             let leaf_hash = tree.get_leaf(i).unwrap();
             tree.remove_back().ok()?;
             hashes.push((i, leaf_hash));
         }
-
+        log::debug!("          Removing extended transactions");
         // Remove each of the extended transactions in the history tree from the extended
         // transaction database.
         for (index, hash) in hashes {
             self.remove_extended_tx(txn, &hash, index as u32);
         }
-
+        log::debug!("          done..");
         Some(())
     }
 
