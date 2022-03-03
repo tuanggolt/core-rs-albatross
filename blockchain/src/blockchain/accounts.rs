@@ -11,13 +11,13 @@ use crate::{Blockchain, PushError};
 /// Implements methods to handle the accounts.
 impl Blockchain {
     /// Updates the accounts given a block.
-    pub fn commit_accounts(
-        &self,
+    pub fn commit_accounts<'txn, 'slf: 'txn>(
+        &'slf self,
         state: &BlockchainState,
         block: &Block,
         prev_entropy: VrfEntropy,
         first_view_number: u32,
-        txn: &mut WriteTransaction,
+        txn: &'txn mut WriteTransaction<'txn>,
     ) -> Result<(), PushError> {
         // Get the accounts from the state.
         let accounts = &state.accounts;
@@ -118,10 +118,10 @@ impl Blockchain {
 
     /// Reverts the accounts given a block. This only applies to micro blocks, since macro blocks
     /// are final and can't be reverted.
-    pub(crate) fn revert_accounts(
-        &self,
+    pub(crate) fn revert_accounts<'txn, 'slf: 'txn>(
+        &'slf self,
         accounts: &Accounts,
-        txn: &mut WriteTransaction,
+        txn: &'txn mut WriteTransaction<'txn>,
         micro_block: &MicroBlock,
         prev_entropy: VrfEntropy,
         prev_view_number: u32,

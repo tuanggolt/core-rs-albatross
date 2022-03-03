@@ -536,13 +536,13 @@ impl Blockchain {
         Ok(PushResult::Rebranched)
     }
 
-    fn check_and_commit(
-        &self,
+    fn check_and_commit<'txn, 'slf: 'txn>(
+        &'slf self,
         state: &BlockchainState,
         block: &Block,
         prev_entropy: VrfEntropy,
         first_view_number: u32,
-        txn: &mut WriteTransaction,
+        txn: &'txn mut WriteTransaction<'txn>,
     ) -> Result<(), PushError> {
         // Check transactions against replay attacks. This is only necessary for micro blocks.
         if block.is_micro() {

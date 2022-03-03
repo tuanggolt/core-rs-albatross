@@ -166,7 +166,7 @@ pub trait ReadCursor {
 
 macro_rules! impl_read_cursor_from_raw {
     ($t: ty, $raw: ident) => {
-        impl<'txn, 'db> ReadCursor for $t {
+        impl<'cur> ReadCursor for $t {
             fn first<K, V>(&mut self) -> Option<(K, V)>
             where
                 K: FromDatabaseValue,

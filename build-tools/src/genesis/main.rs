@@ -15,7 +15,7 @@ fn usage(args: Vec<String>) -> ! {
 fn main() {
     pretty_env_logger::init();
 
-    let env = VolatileEnvironment::new(10).expect("Could not open a volatile database");
+    let env = VolatileEnvironment::new(vec!["AccountsTrie"]).expect("Could not open a volatile database");
     let args = env::args().collect::<Vec<String>>();
 
     if let Some(file) = args.get(1) {

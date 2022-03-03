@@ -118,28 +118,33 @@ impl HistoryStore {
     ///     1. The transactions are pushed in increasing block number order.
     ///     2. All the blocks are consecutive.
     ///     3. We only push transactions for one epoch at a time.
-    pub fn add_to_history(
-        &self,
-        txn: &mut WriteTransaction,
+    pub fn add_to_history<'txn, 'slf: 'txn>(
+        &'slf self,
+        txn: &'txn mut WriteTransaction<'txn>,
         epoch_number: u32,
         ext_txs: &[ExtendedTransaction],
     ) -> Option<Blake2bHash> {
-        // Get the history tree.
-        let mut tree = MerkleMountainRange::new(MMRStore::with_write_transaction(
-            &self.hist_tree_db,
-            txn,
-            epoch_number,
-        ));
-
-        // Append the extended transactions to the history tree and keep the respective leaf indexes.
+        let mut root: Blake2bHash;
         let mut leaf_idx = vec![];
 
-        for tx in ext_txs {
-            let i = tree.push(tx).ok()?;
-            leaf_idx.push(i as u32);
-        }
+        {
+            // Get the history tree.
+            let store = MMRStore::with_write_transaction(
+                &self.hist_tree_db,
+                txn,
+                epoch_number,
+            );
+            let mut tree = MerkleMountainRange::new(store);
 
-        let root = tree.get_root().ok()?;
+            // Append the extended transactions to the history tree and keep the respective leaf indexes.
+
+            for tx in ext_txs {
+                let i = tree.push(tx).ok()?;
+                leaf_idx.push(i as u32);
+            }
+
+            root = tree.get_root().ok()?;
+        }
 
         // Add the extended transactions into the respective database.
         // We need to do this separately due to the borrowing rules of Rust.
@@ -154,9 +159,9 @@ impl HistoryStore {
 
     /// Removes a number of extended transactions from an existing history tree. It returns the root
     /// of the resulting tree.
-    pub fn remove_partial_history(
-        &self,
-        txn: &mut WriteTransaction,
+    pub fn remove_partial_history<'txn, 'slf: 'txn>(
+        &'slf self,
+        txn: &'txn mut WriteTransaction<'txn>,
         epoch_number: u32,
         num_ext_txs: usize,
     ) -> Option<Blake2bHash> {
@@ -193,7 +198,11 @@ impl HistoryStore {
 
     /// Removes an existing history tree and all the extended transactions that were part of it.
     /// Returns None if there's no history tree corresponding to the given epoch number.
-    pub fn remove_history(&self, txn: &mut WriteTransaction, epoch_number: u32) -> Option<()> {
+    pub fn remove_history<'txn, 'slf: 'txn>(
+        &'slf self,
+        txn: &'txn mut WriteTransaction<'txn>,
+        epoch_number: u32,
+    ) -> Option<()> {
         // Get the history tree.
         let mut tree = MerkleMountainRange::new(MMRStore::with_write_transaction(
             &self.hist_tree_db,
@@ -648,11 +657,11 @@ impl HistoryStore {
     }
 
     /// Creates a new history tree from chunks and returns the root hash.
-    pub fn tree_from_chunks(
-        &self,
+    pub fn tree_from_chunks<'txn, 'slf: 'txn>(
+        &'slf self,
         epoch_number: u32,
         chunks: Vec<(Vec<ExtendedTransaction>, RangeProof<Blake2bHash>)>,
-        txn: &mut WriteTransaction,
+        txn: &'txn mut WriteTransaction<'txn>,
     ) -> Result<Blake2bHash, MMRError> {
         // Get partial history tree for given epoch.
         let mut tree = PartialMerkleMountainRange::new(MMRStore::with_write_transaction(

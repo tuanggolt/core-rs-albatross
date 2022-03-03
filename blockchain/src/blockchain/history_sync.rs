@@ -360,11 +360,11 @@ impl Blockchain {
         Ok(PushResult::Extended)
     }
 
-    fn revert_to_common_state(
-        &self,
+    fn revert_to_common_state<'txn, 'slf: 'txn>(
+        &'slf self,
         block: &Block,
         history: &[ExtendedTransaction],
-        txn: &mut WriteTransaction,
+        txn: &'txn mut WriteTransaction<'txn>,
     ) -> usize {
         // Find the index of the first extended transaction in the current batch.
         let last_macro_block = policy::last_macro_block(self.block_number());
@@ -437,10 +437,10 @@ impl Blockchain {
     }
 
     /// Reverts a given number of micro blocks from the blockchain.
-    pub fn revert_blocks(
-        &self,
+    pub fn revert_blocks<'txn, 'slf: 'txn>(
+        &'slf self,
         num_blocks: u32,
-        write_txn: &mut WriteTransaction,
+        write_txn: &'txn mut WriteTransaction<'txn>,
     ) -> Result<(), PushError> {
         debug!(
             "Need to revert {} micro blocks from the current epoch",

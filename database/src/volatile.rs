@@ -9,7 +9,7 @@ use super::rocksdb::*;
 use super::*;
 use crate::cursor::{ReadCursor, WriteCursor as WriteCursorTrait};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VolatileEnvironment {
     temp_dir: Arc<TempDir>,
     env: RocksDBEnvironment,
@@ -51,7 +51,7 @@ impl Error for VolatileDatabaseError {
 
 impl VolatileEnvironment {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(max_dbs: u32) -> Result<Environment, VolatileDatabaseError> {
+    pub fn new(column_families: Vec<&str>) -> Result<Environment, VolatileDatabaseError> {
         let temp_dir = TempDir::new().map_err(VolatileDatabaseError::IoError)?;
         let path = temp_dir
             .path()
@@ -65,31 +65,13 @@ impl VolatileEnvironment {
             .to_string();
         Ok(Environment::Volatile(VolatileEnvironment {
             temp_dir: Arc::new(temp_dir),
-            env: RocksDBEnvironment::new_rocksdb_environment(&path, 0, max_dbs, None)
+            env: RocksDBEnvironment::new_rocksdb_environment(&path, column_families)
                 .map_err(VolatileDatabaseError::LmdbError)?,
         }))
     }
 
-    pub fn new_with_lmdb_flags(
-        max_dbs: u32,
-        max_readers: u32,
-    ) -> Result<Environment, VolatileDatabaseError> {
-        let temp_dir = TempDir::new().map_err(VolatileDatabaseError::IoError)?;
-        let path = temp_dir
-            .path()
-            .to_str()
-            .ok_or_else(|| {
-                VolatileDatabaseError::IoError(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Path cannot be converted into a string.",
-                ))
-            })?
-            .to_string();
-        Ok(Environment::Volatile(VolatileEnvironment {
-            temp_dir: Arc::new(temp_dir),
-            env: RocksDBEnvironment::new_rocksdb_environment(&path, 0, max_dbs, Some(max_readers))
-                .map_err(VolatileDatabaseError::LmdbError)?,
-        }))
+    pub fn new_with_lmdb_flags(column_families: Vec<&str>) -> Result<Environment, VolatileDatabaseError> {
+        Self::new(column_families)
     }
 
     pub(super) fn open_database(&self, name: String, flags: DatabaseFlags) -> VolatileDatabase {
@@ -113,8 +95,8 @@ impl VolatileDatabase {
 #[derive(Debug)]
 pub struct VolatileReadTransaction<'txn>(RocksDBReadTransaction<'txn>);
 
-impl<'env> VolatileReadTransaction<'env> {
-    pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
+impl<'txn> VolatileReadTransaction<'txn> {
+    pub(super) fn new(env: &'txn VolatileEnvironment) -> Self {
         VolatileReadTransaction(RocksDBReadTransaction::new(&env.env))
     }
 
@@ -126,7 +108,7 @@ impl<'env> VolatileReadTransaction<'env> {
         self.0.get(&db.0, key)
     }
 
-    pub(super) fn cursor<'db>(&self, db: &'db Database) -> VolatileCursor<'db> {
+    pub(super) fn cursor<'cur>(&self, db: &'cur Database) -> VolatileCursor<'cur> {
         VolatileCursor(self.0.cursor(db))
     }
 }
@@ -134,9 +116,9 @@ impl<'env> VolatileReadTransaction<'env> {
 #[derive(Debug)]
 pub struct VolatileWriteTransaction<'txn>(RocksDBWriteTransaction<'txn>);
 
-impl<'env> VolatileWriteTransaction<'env> {
+impl<'txn> VolatileWriteTransaction<'txn> {
     #[allow(clippy::new_ret_no_self)]
-    pub(super) fn new(env: &'env VolatileEnvironment) -> Self {
+    pub(super) fn new(env: &'txn VolatileEnvironment) -> Self {
         VolatileWriteTransaction(RocksDBWriteTransaction::new(&env.env))
     }
 
@@ -183,18 +165,18 @@ impl<'env> VolatileWriteTransaction<'env> {
         self.0.commit()
     }
 
-    pub(super) fn cursor<'db>(&self, db: &'db Database) -> VolatileCursor<'db> {
+    pub(super) fn cursor<'cur>(&self, db: &'cur Database) -> VolatileCursor<'cur> {
         VolatileCursor(self.0.cursor(db))
     }
 
-    pub(super) fn write_cursor<'db>(&self, db: &'db Database) -> VolatileWriteCursor<'db> {
+    pub(super) fn write_cursor<'cur>(&self, db: &'cur Database) -> VolatileWriteCursor<'cur> {
         VolatileWriteCursor(self.0.write_cursor(db))
     }
 }
 
-pub struct VolatileCursor<'db>(RocksdbCursor<'db>);
+pub struct VolatileCursor<'cur>(RocksdbCursor<'cur>);
 
-impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
+impl<'cur> ReadCursor for VolatileCursor<'cur> {
     fn first<K, V>(&mut self) -> Option<(K, V)>
     where
         K: FromDatabaseValue,
@@ -326,9 +308,9 @@ impl<'txn, 'db> ReadCursor for VolatileCursor<'db> {
     }
 }
 
-pub struct VolatileWriteCursor<'db>(RocksDBWriteCursor<'db>);
+pub struct VolatileWriteCursor<'cur>(RocksDBWriteCursor<'cur>);
 
-impl<'txn, 'db> ReadCursor for VolatileWriteCursor<'db> {
+impl<'cur> ReadCursor for VolatileWriteCursor<'cur> {
     fn first<K, V>(&mut self) -> Option<(K, V)>
     where
         K: FromDatabaseValue,
@@ -460,7 +442,7 @@ impl<'txn, 'db> ReadCursor for VolatileWriteCursor<'db> {
     }
 }
 
-impl<'txn, 'db> WriteCursorTrait for VolatileWriteCursor<'txn> {
+impl<'cur> WriteCursorTrait for VolatileWriteCursor<'cur> {
     fn remove(&mut self) {
         self.0.remove()
     }
@@ -472,9 +454,10 @@ mod tests {
 
     #[test]
     fn it_can_save_basic_objects() {
-        let env = VolatileEnvironment::new(1).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new(vec![DB_NAME]).unwrap();
         {
-            let db = env.open_database("test".to_string());
+            let db = env.open_database(DB_NAME.to_string());
 
             // Read non-existent value.
             {
@@ -526,9 +509,10 @@ mod tests {
 
     #[test]
     fn isolation_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new_with_lmdb_flags(vec![DB_NAME]).unwrap();
         {
-            let db = env.open_database("test".to_string());
+            let db = env.open_database(DB_NAME.to_string());
 
             // Read non-existent value.
             let tx = ReadTransaction::new(&env);
@@ -559,10 +543,11 @@ mod tests {
 
     #[test]
     fn duplicates_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new_with_lmdb_flags(vec![DB_NAME]).unwrap();
         {
             let db = env.open_database_with_flags(
-                "test".to_string(),
+                DB_NAME.to_string(),
                 DatabaseFlags::DUPLICATE_KEYS | DatabaseFlags::DUP_UINT_VALUES,
             );
 
@@ -625,10 +610,11 @@ mod tests {
 
     #[test]
     fn cursor_test() {
-        let env = VolatileEnvironment::new_with_lmdb_flags(1, 126).unwrap();
+        const DB_NAME: &str = "test";
+        let env = VolatileEnvironment::new_with_lmdb_flags(vec![DB_NAME]).unwrap();
         {
             let db = env.open_database_with_flags(
-                "test".to_string(),
+                DB_NAME.to_string(),
                 DatabaseFlags::DUPLICATE_KEYS | DatabaseFlags::DUP_UINT_VALUES,
             );
 
