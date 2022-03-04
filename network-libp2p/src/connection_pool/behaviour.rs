@@ -389,9 +389,11 @@ impl ConnectionPoolBehaviour {
         // add the receiver to the pre existing peers
         for peer in self.peers.get_peers() {
             let mut dispatch = peer.dispatch.lock();
+            log::debug!("Dispatch lock taken");
 
             dispatch.remove_receiver_raw(type_id);
             dispatch.receive_multiple_raw(vec![(type_id, tx.clone())]);
+            log::debug!("Dispatch lock released");
         }
 
         // add the receiver to the globally defined map
@@ -595,8 +597,10 @@ impl NetworkBehaviour for ConnectionPoolBehaviour {
                 log::trace!("Peer {:?} joined, inserting it into our map", peer_id);
                 {
                     let mut dispatch = peer.dispatch.lock();
+                    log::debug!("Dispatch lock taken");
                     dispatch.remove_all_raw();
                     dispatch.receive_multiple_raw(self.message_receivers.clone());
+                    log::debug!("Dispatch lock released");
                 }
 
                 if !self.peers.insert(Arc::clone(&peer)) {

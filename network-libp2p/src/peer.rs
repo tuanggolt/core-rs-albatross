@@ -48,14 +48,17 @@ impl Peer {
     /// Polls the underlying dispatch's inbound stream by first trying to acquire the mutex. If it's not available,
     /// this will return `Poll::Pending` and make sure that the task is woken up, once the mutex was released.
     pub fn poll_inbound(self: &Arc<Peer>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        log::debug!("Dispatch poll inbound, trying to acquire mutex");
         self.dispatch.lock().poll_inbound(cx, self)
     }
 
     pub fn poll_outbound(self: &Arc<Peer>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        log::debug!("Dispatch poll outbound, trying to acquire mutex");
         self.dispatch.lock().poll_outbound(cx)
     }
 
     pub fn poll_close(&self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        log::debug!("Dispatch poll close, trying to acquire mutex");
         self.dispatch.lock().poll_close(cx)
     }
 }
@@ -98,11 +101,13 @@ impl PeerInterface for Peer {
     }
 
     async fn send<M: Message>(&self, message: M) -> Result<(), SendError> {
+        log::debug!("Dispatch send, trying to acquire mutex");
         self.dispatch.lock().send(message).map_err(|e| e.into())
     }
 
     // TODO: Make this a stream of Result<M, Error>
     fn receive<M: Message>(&self) -> Pin<Box<dyn Stream<Item = M> + Send>> {
+        log::debug!("Dispatch receive, trying to acquire mutex");
         self.dispatch.lock().receive().boxed()
     }
 

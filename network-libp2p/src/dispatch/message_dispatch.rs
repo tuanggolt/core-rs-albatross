@@ -101,6 +101,7 @@ where
     }
 
     pub fn send<M: Message>(&mut self, message: M) -> Result<(), Error> {
+        log::debug!("Dispatch send");
         self.outbound_messages
             .push_back(Box::new(move |sink: Pin<&mut FramedStream<C>>| {
                 Sink::<&M>::start_send(sink, &message)
@@ -108,6 +109,7 @@ where
         if let Some(waker) = self.waker.take() {
             waker.wake();
         }
+        log::debug!("Dispatch send done");
         Ok(())
     }
 
@@ -118,6 +120,7 @@ where
         cx: &mut Context<'_>,
         peer: &Arc<Peer>,
     ) -> Poll<Result<(), Error>> {
+        log::debug!("Dispatch polling inbound");
         loop {
             // Try to dispatch the buffered value. This will return Poll::Pending if the buffer can't be cleared.
             if let Some((type_id, _)) = &self.buffer {
@@ -128,7 +131,10 @@ where
 
                     match tx.poll_ready(cx) {
                         // No space to put the message into the channel
-                        Poll::Pending => return Poll::Pending,
+                        Poll::Pending => {
+                            log::debug!("Dispatch polling inbound done");
+                            return Poll::Pending;
+                        }
 
                         // Send error - the receiver must have been closed.
                         Poll::Ready(Err(e)) => {
@@ -192,24 +198,30 @@ where
                 // IO error), or the message was malformed.
                 Poll::Ready(Some(Err(e))) => {
                     log::warn!("socket error: {}", e);
+                    log::debug!("Dispatch polling inbound done");
                     return Poll::Ready(Err(e));
                 }
 
                 // End of stream. So we terminate the future
                 Poll::Ready(None) => {
                     log::debug!("end of stream");
+                    log::debug!("Dispatch polling inbound done");
                     return Poll::Ready(Ok(()));
                 }
 
                 // We need to wait for more data
                 Poll::Pending => {
+                    log::debug!("Dispatch polling inbound done");
                     return Poll::Pending;
                 }
             }
         }
+        log::debug!("Dispatch polling inbound done");
     }
 
     pub fn poll_outbound(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        log::debug!("Dispatch polling outbound");
+
         store_waker!(self, waker, cx);
 
         // We need to call poll_close for a specific Sink<T>, so...
@@ -225,8 +237,10 @@ where
         ))
         .is_ok()
         {
+            log::debug!("Polling frame is ready");
             if let Some(send_message) = self.outbound_messages.pop_front() {
                 if let Err(e) = send_message.send(self.framed.as_mut()) {
+                    log::debug!("Dispatch polling outbound done");
                     return Poll::Ready(Err(e));
                 }
             } else {
@@ -234,10 +248,12 @@ where
             }
         }
 
+        log::debug!("Dispatch polling outbound done");
         Sink::<&CompilerShutUp>::poll_flush(self.framed.as_mut(), cx)
     }
 
     pub fn poll_close(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        log::debug!("Dispatch polling close");
         // We need to call poll_close for a specific Sink<T>, so...
         #[derive(Debug, Serialize, Deserialize)]
         struct CompilerShutUp;
@@ -249,11 +265,17 @@ where
             let sink: Pin<&mut Framed<TokioAdapter<C>, MessageCodec>> = Pin::new(&mut self.framed);
             match Sink::<&CompilerShutUp>::poll_flush(sink, cx) {
                 Poll::Ready(Ok(())) => {}
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Err(e)) => {
+                    log::debug!("Dispatch polling close done");
+                    return Poll::Ready(Err(e));
+                }
+                Poll::Pending => {
+                    log::debug!("Dispatch polling close done");
+                    return Poll::Pending;
+                }
             }
         }
-
+        log::debug!("Dispatch polling close done");
         {
             let sink: Pin<&mut Framed<TokioAdapter<C>, MessageCodec>> = Pin::new(&mut self.framed);
             Sink::<&CompilerShutUp>::poll_close(sink, cx).map_err(|e| e)
@@ -271,6 +293,7 @@ where
     /// Why does `M` need to be `Unpin`?
     ///
     pub fn receive<M: Message>(&mut self) -> impl Stream<Item = M> {
+        log::debug!("Dispatch receive");
         let type_id = M::TYPE_ID.into();
 
         if self.channels.contains_key(&type_id) {
@@ -289,8 +312,12 @@ where
 
         rx.filter_map(|(data, peer)| async move {
             match Deserialize::deserialize(&mut data.reader()) {
-                Ok(message) => Some(message),
+                Ok(message) => {
+                    log::debug!("Dispatch receive done");
+                    Some(message)
+                }
                 Err(e) => {
+                    log::debug!("Dispatch receive done");
                     log::warn!(
                         "Error deserializing {} message from {}: {}",
                         std::any::type_name::<M>(),
