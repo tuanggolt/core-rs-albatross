@@ -2,17 +2,16 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use crate::identity::WeightRegistry;
-use crate::partitioner::Partitioner;
-use crate::store::ContributionStore;
 use crate::{
     contribution::AggregatableContribution,
-    identity::{Identity, IdentityRegistry},
+    identity::{Identity, IdentityRegistry, ThresholdEvaluator, WeightRegistry},
+    partitioner::Partitioner,
+    store::ContributionStore,
 };
 
 pub trait Evaluator<C: AggregatableContribution>: Send + Sync {
     fn evaluate(&self, signature: &C, level: usize) -> usize;
-    fn is_final(&self, signature: &C) -> bool;
+    fn is_threshold_reached(&self, signature: &C) -> bool;
     fn level_contains_id(&self, level: usize, id: usize) -> bool;
 }
 
@@ -45,7 +44,7 @@ impl<C: AggregatableContribution, S: ContributionStore<Contribution = C>, P: Par
         unimplemented!();
     }
 
-    fn is_final(&self, contribution: &C) -> bool {
+    fn is_threshold_reached(&self, contribution: &C) -> bool {
         contribution.num_contributors() >= self.threshold
     }
 
@@ -58,28 +57,27 @@ impl<C: AggregatableContribution, S: ContributionStore<Contribution = C>, P: Par
 ///
 /// NOTE: This can be used for ViewChanges
 #[derive(Debug)]
-pub struct WeightedVote<S: ContributionStore, I: WeightRegistry + IdentityRegistry, P: Partitioner>
-{
+pub struct WeightedVote<
+    S: ContributionStore,
+    I: WeightRegistry + IdentityRegistry + ThresholdEvaluator<S::Contribution>,
+    P: Partitioner,
+> {
     store: Arc<RwLock<S>>,
     pub weights: Arc<I>,
     partitioner: Arc<P>,
-    pub threshold: usize,
 }
 
-impl<S: ContributionStore, I: WeightRegistry + IdentityRegistry, P: Partitioner>
-    WeightedVote<S, I, P>
+impl<
+        S: ContributionStore,
+        I: WeightRegistry + IdentityRegistry + ThresholdEvaluator<S::Contribution>,
+        P: Partitioner,
+    > WeightedVote<S, I, P>
 {
-    pub fn new(
-        store: Arc<RwLock<S>>,
-        weights: Arc<I>,
-        partitioner: Arc<P>,
-        threshold: usize,
-    ) -> Self {
+    pub fn new(store: Arc<RwLock<S>>, weights: Arc<I>, partitioner: Arc<P>) -> Self {
         Self {
             store,
             weights,
             partitioner,
-            threshold,
         }
     }
 }
@@ -87,7 +85,7 @@ impl<S: ContributionStore, I: WeightRegistry + IdentityRegistry, P: Partitioner>
 impl<
         C: AggregatableContribution,
         S: ContributionStore<Contribution = C>,
-        I: WeightRegistry + IdentityRegistry,
+        I: WeightRegistry + IdentityRegistry + ThresholdEvaluator<C>,
         P: Partitioner,
     > Evaluator<C> for WeightedVote<S, I, P>
 {
@@ -244,18 +242,8 @@ impl<
         }
     }
 
-    fn is_final(&self, signature: &C) -> bool {
-        let votes = self
-            .weights
-            .signature_weight(signature)
-            .unwrap_or_else(|| panic!("Missing weights for signature: {:?}", signature));
-
-        trace!(
-            "is_final(): votes={}, final={}",
-            votes,
-            votes >= self.threshold
-        );
-        votes >= self.threshold
+    fn is_threshold_reached(&self, signature: &C) -> bool {
+        self.weights.is_threshold_reached(signature)
     }
 
     fn level_contains_id(&self, level: usize, id: usize) -> bool {

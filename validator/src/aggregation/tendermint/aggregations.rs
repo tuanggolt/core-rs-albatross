@@ -101,7 +101,6 @@ impl<N: ValidatorNetwork> TendermintAggregations<N> {
             let protocol = TendermintAggregationProtocol::new(
                 self.validator_registry.clone(),
                 self.validator_id as usize,
-                1, // To be removed
                 id.clone(),
             );
 

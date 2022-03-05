@@ -69,6 +69,12 @@ impl identity::WeightRegistry for Registry {
     }
 }
 
+impl identity::ThresholdEvaluator<Contribution> for Registry {
+    fn is_threshold_reached(&self, _contribution: &Contribution) -> bool {
+        false
+    }
+}
+
 impl identity::IdentityRegistry for Registry {
     fn public_key(&self, _id: usize) -> Option<PublicKey> {
         None
@@ -111,7 +117,7 @@ pub struct Protocol {
 }
 
 impl Protocol {
-    pub fn new(node_id: usize, num_ids: usize, threshold: usize) -> Self {
+    pub fn new(node_id: usize, num_ids: usize) -> Self {
         let partitioner = Arc::new(BinomialPartitioner::new(node_id, num_ids));
         let registry = Arc::new(Registry {});
         let store = Arc::new(RwLock::new(
@@ -122,7 +128,6 @@ impl Protocol {
             store.clone(),
             Arc::clone(&registry),
             partitioner.clone(),
-            threshold,
         ));
 
         Protocol {
@@ -274,7 +279,7 @@ async fn it_can_aggregate() {
         let net = Arc::new(hub.new_network_with_address(id as u64));
         // Create a protocol with `contributor_num + 1` peers set its id to `id`. Require `contributor_num` contributions
         // meaning all contributions need to be aggregated with the additional node initialized after this for loop.
-        let protocol = Protocol::new(id, contributor_num + 1, contributor_num);
+        let protocol = Protocol::new(id, contributor_num + 1);
         // the sole contributor for soon to be created contribution is this node.
         let mut contributors = BitSet::new();
         contributors.insert(id);
@@ -321,7 +326,7 @@ async fn it_can_aggregate() {
 
     // same as in the for loop, except we want to keep the handel instance and not spawn it.
     let net = Arc::new(hub.new_network_with_address(contributor_num as u64));
-    let protocol = Protocol::new(contributor_num, contributor_num + 1, contributor_num + 1);
+    let protocol = Protocol::new(contributor_num, contributor_num + 1);
     let mut contributors = BitSet::new();
     contributors.insert(contributor_num);
     let contribution = Contribution {
@@ -375,7 +380,7 @@ async fn it_can_aggregate() {
     // return a fully aggregated contribution and terminate.
     // Same as before
     // let net = Arc::new(hub.new_network_with_address(contributor_num as u64));
-    let protocol = Protocol::new(contributor_num, contributor_num + 1, contributor_num + 1);
+    let protocol = Protocol::new(contributor_num, contributor_num + 1);
     let mut contributors = BitSet::new();
     contributors.insert(contributor_num);
     let contribution = Contribution {

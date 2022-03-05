@@ -14,6 +14,7 @@ use beserial::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::contribution::AggregatableContribution;
+use crate::evaluator::Evaluator;
 use crate::identity::IdentityRegistry;
 use crate::level::Level;
 use crate::partitioner::Partitioner;
@@ -156,7 +157,8 @@ impl<
     }
 
     fn is_complete_aggregate(&self, aggregate: &P::Contribution) -> bool {
-        self.num_contributors(aggregate) == self.protocol.partitioner().size()
+        self.protocol.evaluator().is_threshold_reached(aggregate)
+            || self.num_contributors(aggregate) == self.protocol.partitioner().size()
     }
 
     /// Check if a level was completed TODO: remove contribution parameter as it is not used at all.

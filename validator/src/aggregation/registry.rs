@@ -2,9 +2,11 @@ use std::collections::HashSet;
 
 use bls::PublicKey;
 use collections::BitSet;
-use handel::identity::{Identity, IdentityRegistry, WeightRegistry};
+use handel::identity::{Identity, IdentityRegistry, ThresholdEvaluator, WeightRegistry};
 use primitives::policy;
 use primitives::slots::Validators;
+
+use super::{tendermint::TendermintContribution, view_change::SignedViewChangeMessage};
 
 /// Implementation for Handel registry using a `Validators` list.
 #[derive(Debug)]
@@ -88,5 +90,22 @@ impl WeightRegistry for ValidatorRegistry {
         } else {
             None
         }
+    }
+}
+
+// Necessary for ViewChanges. ViewChanges don't make use of this though so simply returning `false` suffices.
+impl ThresholdEvaluator<SignedViewChangeMessage> for ValidatorRegistry {
+    fn is_threshold_reached(&self, _contribution: &SignedViewChangeMessage) -> bool {
+        false
+    }
+}
+
+// Used for Tendermint
+impl ThresholdEvaluator<TendermintContribution> for ValidatorRegistry {
+    fn is_threshold_reached(&self, contribution: &TendermintContribution) -> bool {
+        contribution.contributions.iter().any(|(_hash, c)| {
+            self.signature_weight(c)
+                .map_or(false, |weight| weight >= policy::TWO_F_PLUS_ONE as usize)
+        })
     }
 }

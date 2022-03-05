@@ -27,7 +27,6 @@ impl TendermintAggregationProtocol {
     pub(super) fn new(
         validators: Arc<ValidatorRegistry>,
         node_id: usize,
-        threshold: usize,
         id: TendermintIdentifier,
     ) -> Self {
         let partitioner = Arc::new(BinomialPartitioner::new(node_id, validators.len()));
@@ -41,7 +40,6 @@ impl TendermintAggregationProtocol {
             Arc::clone(&store),
             validators.clone(),
             Arc::clone(&partitioner),
-            threshold,
         ));
 
         let verifier = Arc::new(TendermintVerifier::new(validators.clone(), id));

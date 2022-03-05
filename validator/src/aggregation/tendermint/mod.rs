@@ -7,4 +7,5 @@ mod tendermint;
 mod utils;
 mod verifier;
 
+pub use self::contribution::TendermintContribution;
 pub use self::tendermint::HandelTendermintAdapter;

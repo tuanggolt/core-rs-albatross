@@ -132,12 +132,7 @@ struct ViewChangeAggregationProtocol {
 }
 
 impl ViewChangeAggregationProtocol {
-    pub fn new(
-        validators: Validators,
-        node_id: usize,
-        threshold: usize,
-        message_hash: Blake2sHash,
-    ) -> Self {
+    pub fn new(validators: Validators, node_id: usize, message_hash: Blake2sHash) -> Self {
         let partitioner = Arc::new(BinomialPartitioner::new(
             node_id,
             validators.num_validators(),
@@ -154,7 +149,6 @@ impl ViewChangeAggregationProtocol {
             Arc::clone(&store),
             Arc::clone(&registry),
             Arc::clone(&partitioner),
-            threshold,
         ));
 
         ViewChangeAggregationProtocol {
@@ -260,7 +254,6 @@ impl ViewChangeAggregation {
             let protocol = ViewChangeAggregationProtocol::new(
                 active_validators.clone(),
                 validator_id as usize,
-                policy::TWO_F_PLUS_ONE as usize,
                 message_hash,
             );
 

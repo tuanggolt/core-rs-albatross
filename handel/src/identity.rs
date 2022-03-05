@@ -55,3 +55,9 @@ pub trait WeightRegistry: Send + Sync {
         self.signers_weight(&contribution.contributors())
     }
 }
+
+pub trait ThresholdEvaluator<C: AggregatableContribution>: WeightRegistry {
+    /// Function used to determine after what threshold the aggregating stops and is
+    /// replaced by simply returning the conclusive yet not full aggregation to senders of contributions.
+    fn is_threshold_reached(&self, contribution: &C) -> bool;
+}
