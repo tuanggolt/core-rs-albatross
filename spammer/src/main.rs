@@ -1,13 +1,14 @@
-use std::collections::VecDeque;
-use std::path::PathBuf;
-use std::str::FromStr;
-
 use futures::StreamExt;
 #[cfg(feature = "metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "metrics")]
 use prometheus::{IntGauge, Registry};
+use rand::distributions::WeightedIndex;
+use rand::prelude::*;
 use rand::{thread_rng, RngCore};
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::str::FromStr;
 use structopt::StructOpt;
 #[cfg(feature = "metrics")]
 use warp::{Filter, Rejection, Reply};
@@ -82,6 +83,14 @@ struct StatsExert {
     pub time: std::time::Duration,
     pub is_micro: bool,
     pub tx_count: usize,
+}
+
+enum SpamType {
+    BaseBasicTransaction,
+    BurstBasicTransaction,
+    Vesting,
+    HTLC,
+    Staking,
 }
 
 const UNIT_KEY: &str = "6c9320ac201caf1f8eaa5b05f5d67a9e77826f3f6be266a0ecccc20416dc6587";
@@ -363,8 +372,37 @@ async fn spam(
         (blockchain.block_number(), blockchain.network_id)
     };
     tokio::task::spawn_blocking(move || {
-        let txs = generate_transactions(&key_pair, number, net_id, count);
+        let choices = [
+            SpamType::BaseBasicTransaction,
+            SpamType::BurstBasicTransaction,
+            SpamType::Vesting,
+        ];
 
+        let weights: [i32; 3] = [8, 2, 2];
+        let dist = WeightedIndex::new(&weights).unwrap();
+        let mut rng = thread_rng();
+
+        let txs = match choices[dist.sample(&mut rng)] {
+            SpamType::BaseBasicTransaction => {
+                log::info!("\tGenerating {} basic transactions\n", count);
+                generate_basic_transactions(&key_pair, number, net_id, count)
+            }
+            SpamType::BurstBasicTransaction => {
+                let min = count * 10;
+                let max = min * 2;
+                let count = rng.gen_range(min..max);
+                log::info!("\tGenerating burst of {} basic transactions\n", count);
+                generate_basic_transactions(&key_pair, number, net_id, count)
+            }
+            SpamType::Vesting => {
+                let count = rng.gen_range(0..count);
+                log::info!("\tGenerating {} vesting contracts\n", count);
+                generate_vesting_contracts(&key_pair, number, net_id, count)
+            }
+            _ => return,
+        };
+
+        let txns_count = txs.len();
         for tx in txs {
             //let consensus1 = consensus.clone();
             let mp = std::sync::Arc::clone(&mempool);
@@ -377,12 +415,13 @@ async fn spam(
                 //}
             });
         }
+        log::info!("\tSent {} transactions to the network.\n", txns_count);
     })
     .await
     .expect("spawn_blocking() panicked");
 }
 
-fn generate_transactions(
+fn generate_basic_transactions(
     key_pair: &KeyPair,
     start_height: u32,
     network_id: NetworkId,
@@ -407,6 +446,37 @@ fn generate_transactions(
         txs.push(tx);
     }
 
+    txs
+}
+
+fn generate_vesting_contracts(
+    key_pair: &KeyPair,
+    start_height: u32,
+    network_id: NetworkId,
+    count: usize,
+) -> Vec<Transaction> {
+    let mut txs = Vec::new();
+
+    let mut rng = thread_rng();
+
+    for _ in 0..count {
+        let mut bytes = [0u8; 20];
+        rng.fill_bytes(&mut bytes);
+        let recipient = Address::from(bytes);
+
+        let tx = TransactionBuilder::new_create_vesting(
+            key_pair,
+            recipient,
+            1,
+            1,
+            1,
+            Coin::from_u64_unchecked(1),
+            Coin::from_u64_unchecked(2),
+            start_height,
+            network_id,
+        );
+        txs.push(tx);
+    }
     txs
 }
 
