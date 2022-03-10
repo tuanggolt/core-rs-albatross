@@ -227,7 +227,7 @@ impl KeyPair {
         )
     }
 
-    fn delinearize_private_key(&self, public_keys_hash: &[u8; 64]) -> Scalar {
+    pub fn delinearize_private_key(&self, public_keys_hash: &[u8; 64]) -> Scalar {
         // Compute H(C||P).
         let mut h: sha2::Sha512 = sha2::Sha512::default();
 
