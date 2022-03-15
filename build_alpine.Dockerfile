@@ -10,7 +10,7 @@ FROM $RUST_IMAGE AS builder
 RUN rustup update nightly && rustup default nightly
 
 # Fetch dependencies.
-RUN apk add --no-cache musl-dev libretls-dev protoc
+RUN apk add --no-cache musl-dev libretls-dev protoc clang clang-static llvm-dev libffi-dev ncurses-dev libstdc++ zlib-dev build-base
 
 # Copy sources.
 COPY . /build
