@@ -268,6 +268,126 @@ fn create_validator_works() {
 }
 
 #[test]
+fn can_get_validator_stakers() {
+    let env = VolatileEnvironment::new(10).unwrap();
+    let accounts_tree = AccountsTrie::new(env.clone(), "AccountsTrie");
+    let mut db_txn = WriteTransaction::new(&env);
+
+    make_empty_contract(&accounts_tree, &mut db_txn);
+
+    //** Add first validator **//
+
+    let cold_keypair = ed25519_key_pair(VALIDATOR_PRIVATE_KEY);
+    let validator_address = Address::from_any_str(VALIDATOR_ADDRESS).unwrap();
+    let signing_key =
+        PublicKey::deserialize_from_vec(&hex::decode(VALIDATOR_SIGNING_KEY).unwrap()).unwrap();
+    let voting_key =
+        BlsPublicKey::deserialize_from_vec(&hex::decode(VALIDATOR_VOTING_KEY).unwrap()).unwrap();
+    let voting_keypair = bls_key_pair(VALIDATOR_VOTING_SECRET_KEY);
+
+    let tx = make_signed_incoming_transaction(
+        IncomingStakingTransactionData::CreateValidator {
+            signing_key,
+            voting_key: voting_key.clone(),
+            proof_of_knowledge: voting_keypair
+                .sign(&voting_key.serialize_to_vec())
+                .compress(),
+            reward_address: Address::from([3u8; 20]),
+            signal_data: None,
+            proof: SignatureProof::default(),
+        },
+        VALIDATOR_DEPOSIT,
+        &cold_keypair,
+    );
+
+    assert_eq!(
+        StakingContract::commit_incoming_transaction(&accounts_tree, &mut db_txn, &tx, 2, 0),
+        Ok(None)
+    );
+
+    // Get stakers for first validator (has none yet)
+    let stakers =
+        StakingContract::get_validator_stakers(&accounts_tree, &db_txn, &validator_address);
+    assert_eq!(stakers.len(), 0);
+
+    //** Add second validator **//
+
+    const VALIDATOR_ADDRESS2: &str = "d998a3c12d84034a5b6354611a62bc9339b25c76";
+    const VALIDATOR_PRIVATE_KEY2: &str =
+        "0dc8ed0e5f3055098eb036cbe5e099b5d2dd01ea80c81db17fdecb63796e1342";
+
+    const VALIDATOR_SIGNING_KEY2: &str =
+        "886433bc15dad76ec5424ce73202fd4730fcb3eba733761153a6fbc9e5d4302e";
+    // const VALIDATOR_SIGNING_SECRET_KEY: &str =
+    //     "587948270a129ab4cfc7d059171dcd03bc21f66d244402e5d94624a6b139270d";
+
+    const VALIDATOR_VOTING_KEY2: &str = "809c65a2005c803350e49f1abe10f7f8d9c90862721c9348c6e9855e4a137cbda59ca8f6454260f3a787fc895f6839e09e11495a27d5a59dcdf3415323ffaeb23698d21c757828364b35aa7c8f9837827ccaf130e66bc222f818e503d31722002dcddeac659a24b654e08b7589e0bee5c88ca6b1f909f3e2600639049a61044698170950a88024903d0ea7ed47b5d35f41612e3d62b8db96a24c19115d8a7f49195d5839903ad25489d7fb587ba8d95707a349e40a002d55b4da7728aaaa004e5f7044267ad001c825cfd7f1df54bc7dc7580ff960ed52ee5430e3452c8306b4aaec80283645109711bbce0ee004e28b18f0fc4031670a79c7551f3f53f92dac87e8519352fbcada0b630dff31d67412b95f5a64074299e6442c839486";
+    const VALIDATOR_VOTING_SECRET_KEY2: &str =
+    "5623b33ea319b83978ee89ba6065ee230cf9c11b3eb3b6c3cdc5288d9af33bec1bac250a5c39e46f88fe8e1077bff9b360969213e0ebed59ea638ba4cfb3b598b88bbad6d34d415003bf47028641038ab8616bd947fb6024f5ff0cec51270100";
+
+    let cold_keypair2 = ed25519_key_pair(VALIDATOR_PRIVATE_KEY2);
+    let validator_address2 = Address::from_any_str(VALIDATOR_ADDRESS2).unwrap();
+    let signing_key2 =
+        PublicKey::deserialize_from_vec(&hex::decode(VALIDATOR_SIGNING_KEY2).unwrap()).unwrap();
+    let voting_key2 =
+        BlsPublicKey::deserialize_from_vec(&hex::decode(VALIDATOR_VOTING_KEY2).unwrap()).unwrap();
+    let voting_keypair2 = bls_key_pair(VALIDATOR_VOTING_SECRET_KEY2);
+
+    let tx = make_signed_incoming_transaction(
+        IncomingStakingTransactionData::CreateValidator {
+            signing_key: signing_key2,
+            voting_key: voting_key2.clone(),
+            proof_of_knowledge: voting_keypair2
+                .sign(&voting_key2.serialize_to_vec())
+                .compress(),
+            reward_address: Address::from([3u8; 20]),
+            signal_data: None,
+            proof: SignatureProof::default(),
+        },
+        VALIDATOR_DEPOSIT,
+        &cold_keypair2,
+    );
+
+    assert_eq!(
+        StakingContract::commit_incoming_transaction(&accounts_tree, &mut db_txn, &tx, 2, 0),
+        Ok(None)
+    );
+
+    // Get stakers for second validator (has none)
+    let stakers =
+        StakingContract::get_validator_stakers(&accounts_tree, &db_txn, &validator_address2);
+    assert_eq!(stakers.len(), 0);
+
+    //** Add staker to first validator **//
+
+    let staker_keypair = ed25519_key_pair(STAKER_PRIVATE_KEY);
+
+    let tx = make_signed_incoming_transaction(
+        IncomingStakingTransactionData::CreateStaker {
+            delegation: Some(validator_address.clone()),
+            proof: SignatureProof::default(),
+        },
+        150_000_000,
+        &staker_keypair,
+    );
+
+    assert_eq!(
+        StakingContract::commit_incoming_transaction(&accounts_tree, &mut db_txn, &tx, 2, 0),
+        Ok(None)
+    );
+
+    // Get stakers for first validator (has one now)
+    let stakers =
+        StakingContract::get_validator_stakers(&accounts_tree, &db_txn, &validator_address);
+    assert_eq!(stakers.len(), 1);
+
+    // Get stakers for second validator (has none)
+    let stakers =
+        StakingContract::get_validator_stakers(&accounts_tree, &db_txn, &validator_address2);
+    assert_eq!(stakers.len(), 0);
+}
+
+#[test]
 fn update_validator_works() {
     let env = VolatileEnvironment::new(10).unwrap();
     let accounts_tree = AccountsTrie::new(env.clone(), "AccountsTrie");
